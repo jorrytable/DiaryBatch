@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: はてなブログ解析システム
+
+# 1. sam deploy --guided で入力した値を受け取るための設定
+Parameters:
+  HatenaId:
+    Type: String
+    Description: "はてなIDを入力してください"
+  BlogId:
+    Type: String
+    Description: "ブログのドメイン（例: example.hatenablog.com）を入力してください"
+
+Resources:
+  # フロントエンドからアクセスするAPI Gateway本体（Lambda Authorizerで保護）
+  HatenaApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        # AllowOriginは現時点ではVercelドメイン未確定のため暫定的に全許可。
+        # デプロイ後、実際のVercelドメインに絞り込むこと。
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowMethods: "'GET,OPTIONS'"
+      Auth:
+        DefaultAuthorizer: SharedSecretAuthorizer
+        Authorizers:
+          SharedSecretAuthorizer:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            Identity:
+              Header: Authorization
+              ReauthorizeEvery: 300
+
+  # 合言葉(Authorizationヘッダー)をSSMの秘密値と照合するLambda Authorizer
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/backend/
+      Handler: api.authorizer.lambda_handler
+      Runtime: python3.11
+      Environment:
+        Variables:
+          SSM_PARAM_NAME: "/hatena-site/access-token"
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/hatena-site/access-token"
+
+  # データを保存するテーブル
+  ReviewTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: HatenaBlogReviews
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: review_date
+          AttributeType: S
+        - AttributeName: data_type
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: DateIndex
+          KeySchema:
+            - AttributeName: data_type
+              KeyType: HASH
+            - AttributeName: review_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # プログラム本体
+  BatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/backend/
+      Handler: batch.app.lambda_handler
+      Runtime: python3.11
+      # 2. プログラム(app.py)が読み取る環境変数の設定
+      Environment:
+        Variables:
+          REVIEW_TABLE_NAME: !Ref ReviewTable
+          SSM_PARAM_NAME: "/hatena-batch/api_key"
+          HATENA_ID: !Ref HatenaId
+          BLOG_ID: !Ref BlogId
+      # 3. 権限の設定
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReviewTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/hatena-batch/api_key"
+      Events:
+        # 毎日 JST 3:00（UTC 18:00）に自動実行
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: "cron(0 18 * * ? *)"
+
+  # データを検索・取得するAPI用プログラム
+  SearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/backend/
+      Handler: api.search.lambda_handler # apiフォルダのsearch.pyを呼び出す
+      Runtime: python3.11
+      Environment:
+        Variables:
+          REVIEW_TABLE_NAME: !Ref ReviewTable
+      Policies:
+        - DynamoDBReadPolicy: # 読み取り専用権限
+            TableName: !Ref ReviewTable
+      Events:
+        # ここがAPI Gatewayの設定（認証付きのHatenaApiに紐付ける）
+        GetReviews:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HatenaApi
+            Path: /reviews
+            Method: get
+
+# 最後にURLを表示するための設定（ファイルの末尾に追加）
+Outputs:
+  SearchApiUrl:
+    Description: "APIのエンドポイントURLです"
+    Value: !Sub "https://${HatenaApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/reviews"
