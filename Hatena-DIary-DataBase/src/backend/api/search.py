@@ -16,7 +16,7 @@ def lambda_handler(event, context):
         # DateIndex（data_type固定値 + review_dateソートキー）に対してQueryし、
         # DynamoDB側で日付降順ソート済みの全件を取得する
         response = table.query(
-            IndexName='DateIndex',
+            IndexName='FeedIndex',
             KeyConditionExpression=Key('data_type').eq('review'),
             ScanIndexForward=False
         )

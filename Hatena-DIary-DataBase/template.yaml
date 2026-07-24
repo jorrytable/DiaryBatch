@@ -66,7 +66,9 @@ Resources:
         - AttributeName: id
           KeyType: HASH
       GlobalSecondaryIndexes:
-        - IndexName: DateIndex
+        # DynamoDBは既存GSIのキースキーマをその場で変更できないため、
+        # 旧DateIndex（review_dateのみHASH）とは別名のGSIとして新設する
+        - IndexName: FeedIndex
           KeySchema:
             - AttributeName: data_type
               KeyType: HASH
