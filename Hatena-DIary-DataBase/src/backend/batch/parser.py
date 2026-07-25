@@ -1,5 +1,55 @@
 import uuid
 import re
+from urllib.parse import urlparse
+
+# ドメイン(ホスト名)→ジャンルの対応表。網羅的ではなく随時追記していく前提の初期値
+GENRE_DOMAIN_MAP = {
+    # 映像
+    'youtube.com': '映像',
+    'youtu.be': '映像',
+    'nicovideo.jp': '映像',
+    'tver.jp': '映像',
+    'abema.tv': '映像',
+    'netflix.com': '映像',
+    'twitch.tv': '映像',
+    # 音楽
+    'music.youtube.com': '音楽',
+    'open.spotify.com': '音楽',
+    'music.apple.com': '音楽',
+    'soundcloud.com': '音楽',
+    # ゲーム
+    'store.steampowered.com': 'ゲーム',
+    'store.epicgames.com': 'ゲーム',
+    'nintendo.com': 'ゲーム',
+    'store.playstation.com': 'ゲーム',
+    # テキスト
+    'kakuyomu.jp': 'テキスト',
+    'syosetu.com': 'テキスト',
+    'note.com': 'テキスト',
+    'qiita.com': 'テキスト',
+    'zenn.dev': 'テキスト',
+    # 体験
+    'tabelog.com': '体験',
+    'retty.me': '体験',
+    'jalan.net': '体験',
+    'ikyu.com': '体験',
+}
+
+
+def classify_genre(url: str) -> str:
+    hostname = urlparse(url).netloc.lower()
+    if hostname.startswith('www.'):
+        hostname = hostname[len('www.'):]
+
+    if hostname in GENRE_DOMAIN_MAP:
+        return GENRE_DOMAIN_MAP[hostname]
+
+    for domain, genre in GENRE_DOMAIN_MAP.items():
+        if hostname.endswith('.' + domain):
+            return genre
+
+    return 'その他'
+
 
 def parse_html_content(content_text: str,
                        date_str: any) -> list:
@@ -48,7 +98,7 @@ def parse_html_content(content_text: str,
                         'review_date': date_str,
                         'title': title,
                         'url': url,
-                        'genre': "Web",
+                        'genre': classify_genre(url),
                         'impression': ""
                     }
                 else:
