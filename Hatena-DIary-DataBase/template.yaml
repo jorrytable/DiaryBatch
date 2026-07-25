@@ -25,6 +25,9 @@ Resources:
         AllowMethods: "'GET,OPTIONS'"
       Auth:
         DefaultAuthorizer: SharedSecretAuthorizer
+        # falseにしないとCORSプリフライト(OPTIONS)にもAuthorizerが適用され、
+        # Authorizationヘッダーを持たないプリフライトが401になりCORSエラーになる
+        AddDefaultAuthorizerToCorsPreflight: false
         Authorizers:
           SharedSecretAuthorizer:
             FunctionArn: !GetAtt AuthorizerFunction.Arn
