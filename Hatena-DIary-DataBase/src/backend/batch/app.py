@@ -15,32 +15,45 @@ TABLE_NAME = os.environ.get('REVIEW_TABLE_NAME', 'HatenaBlogReviews')
 ssm = boto3.client('ssm')
 dynamodb = boto3.resource('dynamodb')
 
+# 無限ループ・想定外の大量ページ取得を防ぐための取得ページ数上限
+MAX_PAGES = 100
+
 def lambda_handler(event: any, context: any) -> str:
     print("★バッチ処理を開始します★")
-    
+
     # 1. APIキー取得
     param = ssm.get_parameter(Name=SSM_PARAM_NAME, WithDecryption=True)
     api_key = param['Parameter']['Value']
 
-    # 2. ブログデータ取得
+    # 2. ブログデータ取得（Atomフィードの<link rel="next">を辿り過去ページも取得）
     url = f"https://blog.hatena.ne.jp/{HATENA_ID}/{BLOG_ID}/atom/entry"
-    response = requests.get(url, auth=(HATENA_ID, api_key))
-    response.raise_for_status()
-
-    # 3. 解析
-    xml_soup = BeautifulSoup(response.content, 'xml')
-    entries = xml_soup.find_all('entry')
-
     all_reviews = []
-    for entry in entries:
-        published = entry.find('published').text
-        date_str = published.split('T')[0]
-        content = entry.find('content').text
+    page_count = 0
 
-        reviews = parse_html_content(content, date_str)
-        all_reviews.extend(reviews)
+    while url and page_count < MAX_PAGES:
+        response = requests.get(url, auth=(HATENA_ID, api_key))
+        response.raise_for_status()
+        page_count += 1
 
-    print(f"解析完了：{len(all_reviews)}件の抽出データを取得しました")
+        # 3. 解析
+        xml_soup = BeautifulSoup(response.content, 'xml')
+        entries = xml_soup.find_all('entry')
+
+        for entry in entries:
+            published = entry.find('published').text
+            date_str = published.split('T')[0]
+            content = entry.find('content').text
+
+            reviews = parse_html_content(content, date_str)
+            all_reviews.extend(reviews)
+
+        next_link = xml_soup.find('link', rel='next')
+        url = next_link['href'] if next_link else None
+
+    if url:
+        print(f"警告：ページ上限（{MAX_PAGES}）に達したため打ち切りました。まだ次ページが存在します。")
+
+    print(f"解析完了：{page_count}ページ、{len(all_reviews)}件の抽出データを取得しました")
 
     # 4. 解析が成功した後に、既存データを全削除（ページネーションを考慮して全件走査）
     table = dynamodb.Table(TABLE_NAME)
