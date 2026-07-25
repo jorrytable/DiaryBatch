@@ -87,8 +87,8 @@ Resources:
       CodeUri: src/backend/
       Handler: batch.app.lambda_handler
       Runtime: python3.11
-      # 過去ページを辿るページネーション取得に対応するため、既定の3秒から延長
-      Timeout: 300
+      # 過去ページを辿るページネーション取得に対応するため、既定の3秒からLambdaの上限値まで延長
+      Timeout: 900
       # 2. プログラム(app.py)が読み取る環境変数の設定
       Environment:
         Variables:

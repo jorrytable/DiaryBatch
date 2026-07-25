@@ -16,7 +16,7 @@ ssm = boto3.client('ssm')
 dynamodb = boto3.resource('dynamodb')
 
 # 無限ループ・想定外の大量ページ取得を防ぐための取得ページ数上限
-MAX_PAGES = 100
+MAX_PAGES = 1000
 
 def lambda_handler(event: any, context: any) -> str:
     print("★バッチ処理を開始します★")
