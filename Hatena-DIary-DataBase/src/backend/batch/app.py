@@ -8,6 +8,7 @@ from common.models import ReviewItem
 
 # 設定の取得
 SSM_PARAM_NAME = os.environ.get('SSM_PARAM_NAME', '/hatena-batch/api_key')
+YOUTUBE_API_KEY_PARAM_NAME = os.environ.get('YOUTUBE_API_KEY_PARAM_NAME', '/hatena-batch/youtube-api-key')
 HATENA_ID = os.environ.get('HATENA_ID')
 BLOG_ID = os.environ.get('BLOG_ID')
 # 環境変数が空の場合に備えて直接テーブル名を指定
@@ -31,6 +32,13 @@ def lambda_handler(event: any, context: any) -> str:
     # 1. APIキー取得
     param = ssm.get_parameter(Name=SSM_PARAM_NAME, WithDecryption=True)
     api_key = param['Parameter']['Value']
+
+    # YouTube Data APIキー（未設定でも動作は続行し、その場合は音楽ジャンル判定のみスキップする）
+    try:
+        youtube_api_key = ssm.get_parameter(Name=YOUTUBE_API_KEY_PARAM_NAME, WithDecryption=True)['Parameter']['Value']
+    except ssm.exceptions.ParameterNotFound:
+        youtube_api_key = None
+        print("YouTube APIキー未設定のため、YouTube動画の音楽ジャンル判定はスキップします")
 
     # 2. ブログデータ取得（Atomフィードの<link rel="next">を辿り過去ページも取得）
     url = f"https://blog.hatena.ne.jp/{HATENA_ID}/{BLOG_ID}/atom/entry"
@@ -71,7 +79,7 @@ def lambda_handler(event: any, context: any) -> str:
 
     for rev in all_reviews:
         before = budget['remaining']
-        metadata = get_or_fetch(cache_table, rev['url'], cached, budget)
+        metadata = get_or_fetch(cache_table, rev['url'], cached, budget, youtube_api_key)
         if budget['remaining'] < before:
             newly_fetched += 1
 

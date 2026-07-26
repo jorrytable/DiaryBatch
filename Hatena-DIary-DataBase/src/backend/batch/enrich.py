@@ -48,25 +48,27 @@ def _extract_youtube_video_id(url: str) -> str | None:
     return None
 
 
-def _is_available_on_youtube_music(video_id: str) -> bool:
-    """videoがYouTube Music上でも再生可能かをベストエフォートで判定する。
-    YouTube Musicには公式の外部APIが無く、music.youtube.comはJSで内容を
-    描画するSPAのため、単純なHTTPリクエストでの精度は未検証（要実データ検証）。"""
+YOUTUBE_MUSIC_CATEGORY_ID = '10'
+
+
+def _is_music_category(video_id: str, youtube_api_key: str) -> bool:
+    """YouTube Data API v3のcategoryId（音楽=10）で公式に音楽判定する。"""
     try:
         resp = requests.get(
-            f'https://music.youtube.com/watch?v={video_id}',
+            'https://www.googleapis.com/youtube/v3/videos',
+            params={'part': 'snippet', 'id': video_id, 'key': youtube_api_key},
             timeout=REQUEST_TIMEOUT,
-            headers={'User-Agent': 'Mozilla/5.0'},
         )
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.content, 'lxml')
-        title = soup.title.string.strip() if soup.title and soup.title.string else ''
-        return title not in ('', 'YouTube Music')
+        items = resp.json().get('items', [])
+        if not items:
+            return False
+        return items[0]['snippet'].get('categoryId') == YOUTUBE_MUSIC_CATEGORY_ID
     except Exception:
         return False
 
 
-def _fetch_oembed(url: str, endpoint: str, hostname: str) -> dict:
+def _fetch_oembed(url: str, endpoint: str, hostname: str, youtube_api_key: str | None) -> dict:
     resp = requests.get(endpoint, params={'url': url, 'format': 'json'}, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
@@ -79,7 +81,7 @@ def _fetch_oembed(url: str, endpoint: str, hostname: str) -> dict:
     if hostname in YOUTUBE_HOSTS and data.get('author_name'):
         tags = [data['author_name']]
         video_id = _extract_youtube_video_id(url)
-        if video_id and _is_available_on_youtube_music(video_id):
+        if video_id and youtube_api_key and _is_music_category(video_id, youtube_api_key):
             tags.append('音楽')
         result['tags'] = tags
 
@@ -110,12 +112,12 @@ def _fetch_page_metadata(url: str) -> dict:
     return result
 
 
-def fetch_metadata(url: str) -> dict:
+def fetch_metadata(url: str, youtube_api_key: str | None = None) -> dict:
     """URL1件分のtitle/embed情報を外部サイトから取得する。失敗しても例外は投げない。"""
     try:
         endpoint = _find_oembed_endpoint(url)
         if endpoint:
-            return _fetch_oembed(url, endpoint, _hostname(url))
+            return _fetch_oembed(url, endpoint, _hostname(url), youtube_api_key)
         return _fetch_page_metadata(url)
     except Exception as e:
         print(f"メタデータ取得失敗: {url} ({e})")
@@ -142,7 +144,7 @@ def batch_get_cached(dynamodb_client, table_name: str, urls: list) -> dict:
     return cached
 
 
-def get_or_fetch(table, url: str, cached: dict, budget: dict) -> dict:
+def get_or_fetch(table, url: str, cached: dict, budget: dict, youtube_api_key: str | None = None) -> dict:
     """事前取得済みキャッシュ(cached)にあればそれを使い、無ければ予算が残っていれば取得してキャッシュする。"""
     if url in cached:
         return cached[url]
@@ -150,7 +152,7 @@ def get_or_fetch(table, url: str, cached: dict, budget: dict) -> dict:
     if budget['remaining'] <= 0:
         return {}
 
-    metadata = fetch_metadata(url)
+    metadata = fetch_metadata(url, youtube_api_key)
     budget['remaining'] -= 1
 
     item = {'url': url, 'fetched_at': datetime.datetime.utcnow().isoformat(), **metadata}

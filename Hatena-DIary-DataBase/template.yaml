@@ -108,6 +108,7 @@ Resources:
           REVIEW_TABLE_NAME: !Ref ReviewTable
           URL_CACHE_TABLE_NAME: !Ref UrlMetadataCacheTable
           SSM_PARAM_NAME: "/hatena-batch/api_key"
+          YOUTUBE_API_KEY_PARAM_NAME: "/hatena-batch/youtube-api-key"
           HATENA_ID: !Ref HatenaId
           BLOG_ID: !Ref BlogId
       # 3. 権限の設定
@@ -121,6 +122,11 @@ Resources:
               Action:
                 - ssm:GetParameter
               Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/hatena-batch/api_key"
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/hatena-batch/youtube-api-key"
       Events:
         # 毎日 JST 3:00（UTC 18:00）に自動実行
         DailySchedule:
