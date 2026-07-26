@@ -5,6 +5,8 @@ import requests
 from bs4 import BeautifulSoup
 from boto3.dynamodb.types import TypeDeserializer
 
+from common.urls import hostname as _hostname
+
 # oEmbed対応ドメイン→エンドポイントURL。網羅的ではなく、確認済みのものから随時追記していく前提の初期値
 OEMBED_ENDPOINTS = {
     'youtube.com': 'https://www.youtube.com/oembed',
@@ -18,13 +20,6 @@ YOUTUBE_HOSTS = {'youtube.com', 'youtu.be'}
 REQUEST_TIMEOUT = 3
 
 _deserializer = TypeDeserializer()
-
-
-def _hostname(url: str) -> str:
-    hostname = urlparse(url).netloc.lower()
-    if hostname.startswith('www.'):
-        hostname = hostname[len('www.'):]
-    return hostname
 
 
 def _find_oembed_endpoint(url: str) -> str | None:

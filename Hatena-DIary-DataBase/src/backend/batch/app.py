@@ -73,21 +73,31 @@ def lambda_handler(event: any, context: any) -> str:
     # 4. URLメタデータキャッシュを参照し、titleが未確定(:title指定なし)のアイテムに
     #    実際のページタイトルを補完、embed_html/OGP情報も付与する
     cache_table = dynamodb.Table(URL_CACHE_TABLE_NAME)
-    cached = batch_get_cached(dynamodb_client, URL_CACHE_TABLE_NAME, [rev['url'] for rev in all_reviews])
+    cached = batch_get_cached(dynamodb_client, URL_CACHE_TABLE_NAME, [rev['url'] for rev in all_reviews if rev['url']])
     budget = {'remaining': ENRICH_BUDGET}
     newly_fetched = 0
 
     for rev in all_reviews:
-        before = budget['remaining']
-        metadata = get_or_fetch(cache_table, rev['url'], cached, budget, youtube_api_key)
-        if budget['remaining'] < before:
-            newly_fetched += 1
+        # 「- 映画『』」等、URLを持たないアイテムはエンリッチ対象外
+        if not rev['url']:
+            metadata = {}
+        else:
+            before = budget['remaining']
+            metadata = get_or_fetch(cache_table, rev['url'], cached, budget, youtube_api_key)
+            if budget['remaining'] < before:
+                newly_fetched += 1
 
         if rev['title'] is None:
             rev['title'] = metadata.get('title') or rev['url']
-        for key in ('embed_html', 'og_title', 'og_description', 'og_image', 'tags'):
+        for key in ('embed_html', 'og_title', 'og_description', 'og_image'):
             if metadata.get(key):
                 rev[key] = metadata[key]
+        if metadata.get('tags'):
+            existing_tags = rev.get('tags', [])
+            for tag in metadata['tags']:
+                if tag not in existing_tags:
+                    existing_tags.append(tag)
+            rev['tags'] = existing_tags
         if metadata.get('is_music'):
             rev['genre'] = '音楽'
 

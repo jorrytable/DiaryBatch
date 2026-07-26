@@ -1,69 +1,14 @@
 import uuid
 import re
-from urllib.parse import urlparse
 
-# ドメイン(ホスト名)→ジャンルの対応表。網羅的ではなく随時追記していく前提の初期値
-GENRE_DOMAIN_MAP = {
-    # 映像
-    'youtube.com': '映像',
-    'youtu.be': '映像',
-    'nicovideo.jp': '映像',
-    'tver.jp': '映像',
-    'abema.tv': '映像',
-    'netflix.com': '映像',
-    'twitch.tv': '映像',
-    # 音楽
-    'music.youtube.com': '音楽',
-    'open.spotify.com': '音楽',
-    'music.apple.com': '音楽',
-    'soundcloud.com': '音楽',
-    # ゲーム
-    'store.steampowered.com': 'ゲーム',
-    'store.epicgames.com': 'ゲーム',
-    'nintendo.com': 'ゲーム',
-    'store.playstation.com': 'ゲーム',
-    # テキスト
-    'kakuyomu.jp': 'テキスト',
-    'syosetu.com': 'テキスト',
-    'note.com': 'テキスト',
-    'qiita.com': 'テキスト',
-    'zenn.dev': 'テキスト',
-    # 体験
-    'tabelog.com': '体験',
-    'retty.me': '体験',
-    'jalan.net': '体験',
-    'ikyu.com': '体験',
-    # ラジオ
-    'radiko.jp': 'ラジオ',
-}
-
-
-def classify_genre(url: str) -> str:
-    hostname = urlparse(url).netloc.lower()
-    if hostname.startswith('www.'):
-        hostname = hostname[len('www.'):]
-
-    # Spotifyはpodcast(episode/show)のみラジオ扱いにし、それ以外(track/album/playlist等)は音楽のまま
-    if hostname == 'open.spotify.com':
-        path = urlparse(url).path
-        if path.startswith('/episode/') or path.startswith('/show/'):
-            return 'ラジオ'
-
-    if hostname in GENRE_DOMAIN_MAP:
-        return GENRE_DOMAIN_MAP[hostname]
-
-    for domain, genre in GENRE_DOMAIN_MAP.items():
-        if hostname.endswith('.' + domain):
-            return genre
-
-    return 'その他'
+from batch.classify import classify_genre_and_tags, classify_from_content
 
 
 def parse_html_content(content_text: str,
                        date_str: any) -> list:
     results = []
     lines = content_text.splitlines()
-    
+
     is_target_section = False
     current_item = None
 
@@ -90,15 +35,32 @@ def parse_html_content(content_text: str,
 
                 # リンクとタイトルを抽出 [URL:title] または [URL] の形式
                 # 正規表現でURLとタイトル部分を抜き出す
-                match = re.search(r'\[(https?://[^\s\]]+):title\]', line)
-                if not match:
-                    match = re.search(r'\[(https?://[^\s\]]+)\]', line)
-                
-                if match:
-                    url = match.group(1)
-                    # タイトル部分（:titleがあれば取得、なければNone＝後段でページタイトルを取得する必要ありのマーカー）
-                    title_match = re.search(r':title=([^\]]+)\]', line)
-                    title = title_match.group(1) if title_match else None
+                url_match = re.search(r'\[(https?://[^\s\]]+):title\]', line)
+                if not url_match:
+                    url_match = re.search(r'\[(https?://[^\s\]]+)\]', line)
+
+                # URLが無くても「- 映画『』」「- TVアニメ『』」等の記法ならアイテムとして採用する
+                content_rule = classify_from_content(line)
+
+                if url_match or content_rule:
+                    if url_match:
+                        url = url_match.group(1)
+                        # タイトル部分（:titleがあれば取得、なければNone＝後段でページタイトルを取得する必要ありのマーカー）
+                        title_match = re.search(r':title=([^\]]+)\]', line)
+                        title = title_match.group(1) if title_match else None
+                        genre, tags = classify_genre_and_tags(url)
+                    else:
+                        url = ""
+                        title = None
+                        genre, tags = 'その他', []
+
+                    if content_rule:
+                        genre = content_rule[0]
+                        if content_rule[1] not in tags:
+                            tags = tags + [content_rule[1]]
+                        if title is None:
+                            quote_match = re.search(r'『(.+?)』', line)
+                            title = quote_match.group(1) if quote_match else line[len('- '):].strip()
 
                     current_item = {
                         'id': str(uuid.uuid4()),
@@ -106,7 +68,8 @@ def parse_html_content(content_text: str,
                         'review_date': date_str,
                         'title': title,
                         'url': url,
-                        'genre': classify_genre(url),
+                        'genre': genre,
+                        'tags': tags,
                         'impression': ""
                     }
                 else:
@@ -117,7 +80,7 @@ def parse_html_content(content_text: str,
                 impression = line.lstrip('- ').strip()
                 # 脚注記号 ((...)) などを除去（任意ですが、きれいに見せるため）
                 impression = re.sub(r'\(\(.*?\)\)', '', impression)
-                
+
                 if current_item['impression']:
                     current_item['impression'] += "\n" + impression
                 else:

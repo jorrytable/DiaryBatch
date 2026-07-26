@@ -1,7 +1,7 @@
 import sys
 print(sys.path)
 
-from src.backend.batch.parser import parse_html_content, classify_genre
+from src.backend.batch.parser import parse_html_content
 
 def test_kanryo():
     # 実験用のニセ日記データ
@@ -14,29 +14,24 @@ def test_kanryo():
     print("\n★テスト成功！正しく抜き出せています★")
 
 
-def test_classify_genre_known_domain():
-    assert classify_genre("https://www.youtube.com/watch?v=x") == "映像"
+def test_movie_line_without_url_is_captured():
+    content = "*** 今日見たもの\n- 映画『花のあすか組』\n-- 面白かった"
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] == "花のあすか組"
+    assert results[0]['url'] == ""
+    assert results[0]['genre'] == "映像"
+    assert results[0]['tags'] == ["映画"]
+    assert results[0]['impression'] == "面白かった"
 
 
-def test_classify_genre_subdomain():
-    assert classify_genre("https://m.youtube.com/watch?v=x") == "映像"
+def test_tv_anime_line_without_url_is_captured():
+    content = "*** 今日見たもの\n- TVアニメ『葬送のフリーレン』"
+    results = parse_html_content(content, "2026-01-05")
 
-
-def test_classify_genre_unknown_domain():
-    assert classify_genre("https://example.com/page") == "その他"
-
-
-def test_classify_genre_radiko():
-    assert classify_genre("https://radiko.jp/#!/live/TBS") == "ラジオ"
-
-
-def test_classify_genre_spotify_episode_is_radio():
-    assert classify_genre("https://open.spotify.com/episode/abc123") == "ラジオ"
-
-
-def test_classify_genre_spotify_show_is_radio():
-    assert classify_genre("https://open.spotify.com/show/abc123") == "ラジオ"
-
-
-def test_classify_genre_spotify_track_is_music():
-    assert classify_genre("https://open.spotify.com/track/abc123") == "音楽"
+    assert len(results) == 1
+    assert results[0]['title'] == "葬送のフリーレン"
+    assert results[0]['url'] == ""
+    assert results[0]['genre'] == "映像"
+    assert results[0]['tags'] == ["TVアニメ"]

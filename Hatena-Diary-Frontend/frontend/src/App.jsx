@@ -164,9 +164,13 @@ function App() {
                 </div>
               </div>
               <h2 className="text-xl font-bold text-gray-900 mb-3">
-                <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
-                  {item.title}
-                </a>
+                {item.url ? (
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
+                    {item.title}
+                  </a>
+                ) : (
+                  item.title
+                )}
               </h2>
               <EmbedPreview item={item} />
               <p className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
