@@ -135,6 +135,8 @@ Resources:
       CodeUri: src/backend/
       Handler: api.search.lambda_handler # apiフォルダのsearch.pyを呼び出す
       Runtime: python3.11
+      # 全件取得のためQueryを複数回ページングする可能性があるため、既定の3秒から延長
+      Timeout: 30
       Environment:
         Variables:
           REVIEW_TABLE_NAME: !Ref ReviewTable

@@ -13,14 +13,21 @@ def lambda_handler(event, context):
     フロントエンドからのリクエストを受けて、DynamoDBからデータを返す
     """
     try:
-        # DateIndex（data_type固定値 + review_dateソートキー）に対してQueryし、
-        # DynamoDB側で日付降順ソート済みの全件を取得する
-        response = table.query(
-            IndexName='FeedIndex',
-            KeyConditionExpression=Key('data_type').eq('review'),
-            ScanIndexForward=False
-        )
-        items = response.get('Items', [])
+        # FeedIndex（data_type固定値 + review_dateソートキー）に対してQueryし、
+        # DynamoDB側で日付降順ソート済みの全件を取得する。
+        # 1回のQuery応答は1MBまでのため、LastEvaluatedKeyがある間は続けて取得する
+        items = []
+        query_kwargs = {
+            "IndexName": "FeedIndex",
+            "KeyConditionExpression": Key("data_type").eq("review"),
+            "ScanIndexForward": False,
+        }
+        while True:
+            response = table.query(**query_kwargs)
+            items.extend(response.get("Items", []))
+            if "LastEvaluatedKey" not in response:
+                break
+            query_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
         return {
             "statusCode": 200,
