@@ -88,6 +88,8 @@ def lambda_handler(event: any, context: any) -> str:
         for key in ('embed_html', 'og_title', 'og_description', 'og_image', 'tags'):
             if metadata.get(key):
                 rev[key] = metadata[key]
+        if metadata.get('is_music'):
+            rev['genre'] = '音楽'
 
     print(f"URLメタデータ：新規取得{newly_fetched}件（予算{ENRICH_BUDGET}件中）")
 

@@ -79,11 +79,11 @@ def _fetch_oembed(url: str, endpoint: str, hostname: str, youtube_api_key: str |
         result['embed_html'] = data['html']
 
     if hostname in YOUTUBE_HOSTS and data.get('author_name'):
-        tags = [data['author_name']]
+        result['tags'] = [data['author_name']]
         video_id = _extract_youtube_video_id(url)
         if video_id and youtube_api_key and _is_music_category(video_id, youtube_api_key):
-            tags.append('音楽')
-        result['tags'] = tags
+            # 音楽カテゴリの動画は、tagsではなくgenre自体を「映像」から「音楽」に上書きする
+            result['is_music'] = True
 
     return result
 
