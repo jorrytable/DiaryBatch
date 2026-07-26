@@ -77,7 +77,7 @@ def lambda_handler(event: any, context: any) -> str:
 
         if rev['title'] is None:
             rev['title'] = metadata.get('title') or rev['url']
-        for key in ('embed_html', 'og_title', 'og_description', 'og_image'):
+        for key in ('embed_html', 'og_title', 'og_description', 'og_image', 'tags'):
             if metadata.get(key):
                 rev[key] = metadata[key]
 

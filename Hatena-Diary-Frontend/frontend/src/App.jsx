@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'その他']
+const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'ラジオ', 'その他']
 
 // oEmbed(embed_html)があればそれを埋め込み表示、無ければOGP情報で簡易プレビューカードを表示。
 // どちらも無ければ何も表示しない。embed_htmlはYouTube/Spotify/SoundCloud等、
@@ -156,7 +156,12 @@ function App() {
             <div key={item.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-sm text-blue-600 font-mono">{item.review_date}</span>
-                <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">{item.genre}</span>
+                <div className="flex flex-wrap gap-1 justify-end">
+                  <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">{item.genre}</span>
+                  {item.tags?.map((tag) => (
+                    <span key={tag} className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded">{tag}</span>
+                  ))}
+                </div>
               </div>
               <h2 className="text-xl font-bold text-gray-900 mb-3">
                 <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">

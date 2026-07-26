@@ -33,6 +33,8 @@ GENRE_DOMAIN_MAP = {
     'retty.me': '体験',
     'jalan.net': '体験',
     'ikyu.com': '体験',
+    # ラジオ
+    'radiko.jp': 'ラジオ',
 }
 
 
@@ -40,6 +42,12 @@ def classify_genre(url: str) -> str:
     hostname = urlparse(url).netloc.lower()
     if hostname.startswith('www.'):
         hostname = hostname[len('www.'):]
+
+    # Spotifyはpodcast(episode/show)のみラジオ扱いにし、それ以外(track/album/playlist等)は音楽のまま
+    if hostname == 'open.spotify.com':
+        path = urlparse(url).path
+        if path.startswith('/episode/') or path.startswith('/show/'):
+            return 'ラジオ'
 
     if hostname in GENRE_DOMAIN_MAP:
         return GENRE_DOMAIN_MAP[hostname]

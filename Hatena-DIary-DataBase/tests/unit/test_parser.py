@@ -24,3 +24,19 @@ def test_classify_genre_subdomain():
 
 def test_classify_genre_unknown_domain():
     assert classify_genre("https://example.com/page") == "その他"
+
+
+def test_classify_genre_radiko():
+    assert classify_genre("https://radiko.jp/#!/live/TBS") == "ラジオ"
+
+
+def test_classify_genre_spotify_episode_is_radio():
+    assert classify_genre("https://open.spotify.com/episode/abc123") == "ラジオ"
+
+
+def test_classify_genre_spotify_show_is_radio():
+    assert classify_genre("https://open.spotify.com/show/abc123") == "ラジオ"
+
+
+def test_classify_genre_spotify_track_is_music():
+    assert classify_genre("https://open.spotify.com/track/abc123") == "音楽"

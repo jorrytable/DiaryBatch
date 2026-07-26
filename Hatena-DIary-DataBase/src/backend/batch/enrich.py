@@ -1,8 +1,9 @@
 import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import requests
 from bs4 import BeautifulSoup
+from boto3.dynamodb.types import TypeDeserializer
 
 # oEmbed対応ドメイン→エンドポイントURL。網羅的ではなく、確認済みのものから随時追記していく前提の初期値
 OEMBED_ENDPOINTS = {
@@ -12,7 +13,11 @@ OEMBED_ENDPOINTS = {
     'soundcloud.com': 'https://soundcloud.com/oembed',
 }
 
+YOUTUBE_HOSTS = {'youtube.com', 'youtu.be'}
+
 REQUEST_TIMEOUT = 3
+
+_deserializer = TypeDeserializer()
 
 
 def _hostname(url: str) -> str:
@@ -32,7 +37,36 @@ def _find_oembed_endpoint(url: str) -> str | None:
     return None
 
 
-def _fetch_oembed(url: str, endpoint: str) -> dict:
+def _extract_youtube_video_id(url: str) -> str | None:
+    parsed = urlparse(url)
+    hostname = parsed.netloc.lower()
+    if 'youtu.be' in hostname:
+        return parsed.path.lstrip('/') or None
+    query = parse_qs(parsed.query)
+    if 'v' in query:
+        return query['v'][0]
+    return None
+
+
+def _is_available_on_youtube_music(video_id: str) -> bool:
+    """videoがYouTube Music上でも再生可能かをベストエフォートで判定する。
+    YouTube Musicには公式の外部APIが無く、music.youtube.comはJSで内容を
+    描画するSPAのため、単純なHTTPリクエストでの精度は未検証（要実データ検証）。"""
+    try:
+        resp = requests.get(
+            f'https://music.youtube.com/watch?v={video_id}',
+            timeout=REQUEST_TIMEOUT,
+            headers={'User-Agent': 'Mozilla/5.0'},
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.content, 'lxml')
+        title = soup.title.string.strip() if soup.title and soup.title.string else ''
+        return title not in ('', 'YouTube Music')
+    except Exception:
+        return False
+
+
+def _fetch_oembed(url: str, endpoint: str, hostname: str) -> dict:
     resp = requests.get(endpoint, params={'url': url, 'format': 'json'}, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
@@ -41,6 +75,14 @@ def _fetch_oembed(url: str, endpoint: str) -> dict:
         result['title'] = data['title']
     if data.get('html'):
         result['embed_html'] = data['html']
+
+    if hostname in YOUTUBE_HOSTS and data.get('author_name'):
+        tags = [data['author_name']]
+        video_id = _extract_youtube_video_id(url)
+        if video_id and _is_available_on_youtube_music(video_id):
+            tags.append('音楽')
+        result['tags'] = tags
+
     return result
 
 
@@ -73,7 +115,7 @@ def fetch_metadata(url: str) -> dict:
     try:
         endpoint = _find_oembed_endpoint(url)
         if endpoint:
-            return _fetch_oembed(url, endpoint)
+            return _fetch_oembed(url, endpoint, _hostname(url))
         return _fetch_page_metadata(url)
     except Exception as e:
         print(f"メタデータ取得失敗: {url} ({e})")
@@ -93,7 +135,7 @@ def batch_get_cached(dynamodb_client, table_name: str, urls: list) -> dict:
         while request_items:
             resp = dynamodb_client.batch_get_item(RequestItems=request_items)
             for raw_item in resp['Responses'].get(table_name, []):
-                item = {k: v.get('S', v.get('SS')) for k, v in raw_item.items()}
+                item = {k: _deserializer.deserialize(v) for k, v in raw_item.items()}
                 cached[item['url']] = item
             request_items = resp.get('UnprocessedKeys') or {}
 
