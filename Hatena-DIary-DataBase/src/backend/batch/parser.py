@@ -88,10 +88,10 @@ def parse_html_content(content_text: str,
                 
                 if match:
                     url = match.group(1)
-                    # タイトル部分（:titleがあれば取得、なければURL）
+                    # タイトル部分（:titleがあれば取得、なければNone＝後段でページタイトルを取得する必要ありのマーカー）
                     title_match = re.search(r':title=([^\]]+)\]', line)
-                    title = title_match.group(1) if title_match else url
-                    
+                    title = title_match.group(1) if title_match else None
+
                     current_item = {
                         'id': str(uuid.uuid4()),
                         'data_type': 'review',

@@ -3,6 +3,7 @@ import boto3
 import requests
 from bs4 import BeautifulSoup
 from batch.parser import parse_html_content
+from batch.enrich import batch_get_cached, get_or_fetch
 from common.models import ReviewItem
 
 # 設定の取得
@@ -11,12 +12,18 @@ HATENA_ID = os.environ.get('HATENA_ID')
 BLOG_ID = os.environ.get('BLOG_ID')
 # 環境変数が空の場合に備えて直接テーブル名を指定
 TABLE_NAME = os.environ.get('REVIEW_TABLE_NAME', 'HatenaBlogReviews')
+URL_CACHE_TABLE_NAME = os.environ.get('URL_CACHE_TABLE_NAME', 'HatenaUrlMetadataCache')
 
 ssm = boto3.client('ssm')
 dynamodb = boto3.resource('dynamodb')
+dynamodb_client = boto3.client('dynamodb')
 
 # 無限ループ・想定外の大量ページ取得を防ぐための取得ページ数上限
 MAX_PAGES = 1000
+
+# 1回の実行あたり、未キャッシュURLのtitle/embed情報を新規取得する件数の上限
+# （既存の大量履歴を一度に処理してLambdaのタイムアウトを超えないようにするため）
+ENRICH_BUDGET = 200
 
 def lambda_handler(event: any, context: any) -> str:
     print("★バッチ処理を開始します★")
@@ -55,7 +62,28 @@ def lambda_handler(event: any, context: any) -> str:
 
     print(f"解析完了：{page_count}ページ、{len(all_reviews)}件の抽出データを取得しました")
 
-    # 4. 解析が成功した後に、既存データを全削除（ページネーションを考慮して全件走査）
+    # 4. URLメタデータキャッシュを参照し、titleが未確定(:title指定なし)のアイテムに
+    #    実際のページタイトルを補完、embed_html/OGP情報も付与する
+    cache_table = dynamodb.Table(URL_CACHE_TABLE_NAME)
+    cached = batch_get_cached(dynamodb_client, URL_CACHE_TABLE_NAME, [rev['url'] for rev in all_reviews])
+    budget = {'remaining': ENRICH_BUDGET}
+    newly_fetched = 0
+
+    for rev in all_reviews:
+        before = budget['remaining']
+        metadata = get_or_fetch(cache_table, rev['url'], cached, budget)
+        if budget['remaining'] < before:
+            newly_fetched += 1
+
+        if rev['title'] is None:
+            rev['title'] = metadata.get('title') or rev['url']
+        for key in ('embed_html', 'og_title', 'og_description', 'og_image'):
+            if metadata.get(key):
+                rev[key] = metadata[key]
+
+    print(f"URLメタデータ：新規取得{newly_fetched}件（予算{ENRICH_BUDGET}件中）")
+
+    # 5. 解析が成功した後に、既存データを全削除（ページネーションを考慮して全件走査）
     table = dynamodb.Table(TABLE_NAME)
     deleted_count = 0
     with table.batch_writer() as batch:
@@ -70,7 +98,7 @@ def lambda_handler(event: any, context: any) -> str:
             scan_kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
     print(f"既存データを{deleted_count}件削除しました")
 
-    # 5. 新データを全件書き込み
+    # 6. 新データを全件書き込み
     with table.batch_writer() as batch:
         for rev in all_reviews:
             batch.put_item(Item=rev)

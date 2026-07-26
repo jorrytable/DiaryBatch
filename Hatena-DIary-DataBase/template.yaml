@@ -80,6 +80,19 @@ Resources:
           Projection:
             ProjectionType: ALL
 
+  # URL単位のtitle/embed情報キャッシュ（ReviewTableの日次全削除の影響を受けず永続する）
+  UrlMetadataCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: HatenaUrlMetadataCache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: url
+          AttributeType: S
+      KeySchema:
+        - AttributeName: url
+          KeyType: HASH
+
   # プログラム本体
   BatchFunction:
     Type: AWS::Serverless::Function
@@ -93,6 +106,7 @@ Resources:
       Environment:
         Variables:
           REVIEW_TABLE_NAME: !Ref ReviewTable
+          URL_CACHE_TABLE_NAME: !Ref UrlMetadataCacheTable
           SSM_PARAM_NAME: "/hatena-batch/api_key"
           HATENA_ID: !Ref HatenaId
           BLOG_ID: !Ref BlogId
@@ -100,6 +114,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref ReviewTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UrlMetadataCacheTable
         - Statement:
             - Effect: Allow
               Action:

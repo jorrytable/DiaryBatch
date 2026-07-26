@@ -2,6 +2,43 @@ import { useState } from 'react'
 
 const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'その他']
 
+// oEmbed(embed_html)があればそれを埋め込み表示、無ければOGP情報で簡易プレビューカードを表示。
+// どちらも無ければ何も表示しない。embed_htmlはYouTube/Spotify/SoundCloud等、
+// 許可リスト化された信頼できるサービスのoEmbed応答のみが入る想定。
+function EmbedPreview({ item }) {
+  if (item.embed_html) {
+    return (
+      <div
+        className="mb-3 [&_iframe]:w-full [&_iframe]:aspect-video"
+        dangerouslySetInnerHTML={{ __html: item.embed_html }}
+      />
+    )
+  }
+
+  if (item.og_title || item.og_description || item.og_image) {
+    return (
+      <a
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mb-3 flex gap-3 border border-gray-200 rounded overflow-hidden hover:bg-gray-50 transition"
+      >
+        {item.og_image && (
+          <img src={item.og_image} alt="" className="w-28 h-28 object-cover flex-shrink-0" />
+        )}
+        <div className="p-2 overflow-hidden">
+          {item.og_title && <p className="font-bold text-sm text-gray-800 truncate">{item.og_title}</p>}
+          {item.og_description && (
+            <p className="text-xs text-gray-500 line-clamp-2">{item.og_description}</p>
+          )}
+        </div>
+      </a>
+    )
+  }
+
+  return null
+}
+
 function App() {
   // 認証用の状態
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -126,6 +163,7 @@ function App() {
                   {item.title}
                 </a>
               </h2>
+              <EmbedPreview item={item} />
               <p className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
                 {item.impression}
               </p>
