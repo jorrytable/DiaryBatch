@@ -39,6 +39,32 @@ function EmbedPreview({ item }) {
   return null
 }
 
+function PaginationControls({ page, totalPages, onPrev, onNext }) {
+  return (
+    <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={page <= 1}
+        className="px-3 py-1 rounded border border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+      >
+        ← 前へ
+      </button>
+      <span>ページ {page} / {totalPages}</span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={page >= totalPages}
+        className="px-3 py-1 rounded border border-gray-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+      >
+        次へ →
+      </button>
+    </div>
+  )
+}
+
+const PAGE_SIZE = 100
+
 function App() {
   // 認証用の状態
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -51,20 +77,34 @@ function App() {
   // 検索・フィルタ用の状態
   const [searchText, setSearchText] = useState('')
   const [selectedGenres, setSelectedGenres] = useState([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const toggleGenre = (genre) => {
     setSelectedGenres((prev) =>
       prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
     )
+    setCurrentPage(1)
   }
 
   const filteredReviews = reviews.filter((item) => {
     const matchesGenre = selectedGenres.length === 0 || selectedGenres.includes(item.genre)
-    const matchesText =
-      searchText === '' ||
-      `${item.title}${item.impression}`.toLowerCase().includes(searchText.toLowerCase())
-    return matchesGenre && matchesText
+    const searchTarget = `${item.title}${item.impression}${(item.tags || []).join(' ')}`.toLowerCase()
+    const matchesText = searchText === '' || searchTarget.includes(searchText.toLowerCase())
+    const matchesDateFrom = dateFrom === '' || item.review_date >= dateFrom
+    const matchesDateTo = dateTo === '' || item.review_date <= dateTo
+    return matchesGenre && matchesText && matchesDateFrom && matchesDateTo
   })
+
+  const totalPages = Math.max(1, Math.ceil(filteredReviews.length / PAGE_SIZE))
+  const currentPageSafe = Math.min(currentPage, totalPages)
+  const pagedReviews = filteredReviews.slice(
+    (currentPageSafe - 1) * PAGE_SIZE,
+    currentPageSafe * PAGE_SIZE
+  )
+  const goToPrevPage = () => setCurrentPage((p) => Math.max(1, p - 1))
+  const goToNextPage = () => setCurrentPage((p) => Math.min(totalPages, p + 1))
 
   const API_URL = import.meta.env.VITE_API_URL
 
@@ -116,43 +156,102 @@ function App() {
 
   // ===== メイン画面 =====
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-10">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-8 border-b-2 border-blue-500 pb-2">
-          今日見たもの ログ
-        </h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="sticky top-0 z-10 bg-gray-50 shadow-sm">
+        <div className="max-w-4xl mx-auto p-4 md:px-10 md:pt-10 md:pb-4">
+          <h1 className="text-3xl font-bold text-gray-800 mb-4 border-b-2 border-blue-500 pb-2">
+            今日見たもの ログ
+          </h1>
 
-        <div className="bg-white rounded-lg shadow-md p-4 mb-6 space-y-3">
-          <input
-            type="text"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            placeholder="タイトル・感想で検索"
-            className="border border-gray-300 p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <div className="flex flex-wrap gap-3">
-            {GENRES.map((genre) => (
-              <label key={genre} className="flex items-center gap-1 text-sm text-gray-700">
+          <div className="bg-white rounded-lg shadow-md p-4 space-y-3">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchText}
+                onChange={(e) => {
+                  setSearchText(e.target.value)
+                  setCurrentPage(1)
+                }}
+                placeholder="タイトル・感想・タグで検索"
+                className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {searchText !== '' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchText('')
+                    setCurrentPage(1)
+                  }}
+                  aria-label="検索内容をクリア"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {GENRES.map((genre) => (
+                <label key={genre} className="flex items-center gap-1 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={selectedGenres.includes(genre)}
+                    onChange={() => toggleGenre(genre)}
+                  />
+                  {genre}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+              <label className="flex items-center gap-1">
+                登録日
                 <input
-                  type="checkbox"
-                  checked={selectedGenres.includes(genre)}
-                  onChange={() => toggleGenre(genre)}
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value)
+                    setCurrentPage(1)
+                  }}
+                  className="border border-gray-300 rounded p-1"
                 />
-                {genre}
               </label>
-            ))}
-          </div>
-          <p className="text-sm text-gray-500">
-            {filteredReviews.length}件 / 全{reviews.length}件
-          </p>
-        </div>
+              〜
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => {
+                  setDateTo(e.target.value)
+                  setCurrentPage(1)
+                }}
+                className="border border-gray-300 rounded p-1"
+              />
+            </div>
 
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                {filteredReviews.length}件 / 全{reviews.length}件
+              </p>
+              {totalPages > 1 && (
+                <PaginationControls
+                  page={currentPageSafe}
+                  totalPages={totalPages}
+                  onPrev={goToPrevPage}
+                  onNext={goToNextPage}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto p-4 md:px-10 md:pb-10">
         {filteredReviews.length === 0 && (
           <p className="text-center text-gray-500 py-10">該当するレビューがありません</p>
         )}
 
         <div className="space-y-6">
-          {filteredReviews.map((item) => (
+          {pagedReviews.map((item) => (
             <div key={item.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-sm text-blue-600 font-mono">{item.review_date}</span>
@@ -179,6 +278,17 @@ function App() {
             </div>
           ))}
         </div>
+
+        {totalPages > 1 && (
+          <div className="mt-6">
+            <PaginationControls
+              page={currentPageSafe}
+              totalPages={totalPages}
+              onPrev={goToPrevPage}
+              onNext={goToNextPage}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
