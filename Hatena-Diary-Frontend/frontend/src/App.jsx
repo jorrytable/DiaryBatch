@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'その他']
+
 function App() {
   // 認証用の状態
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -8,6 +10,24 @@ function App() {
   // データ用の状態
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(false)
+
+  // 検索・フィルタ用の状態
+  const [searchText, setSearchText] = useState('')
+  const [selectedGenres, setSelectedGenres] = useState([])
+
+  const toggleGenre = (genre) => {
+    setSelectedGenres((prev) =>
+      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
+    )
+  }
+
+  const filteredReviews = reviews.filter((item) => {
+    const matchesGenre = selectedGenres.length === 0 || selectedGenres.includes(item.genre)
+    const matchesText =
+      searchText === '' ||
+      `${item.title}${item.impression}`.toLowerCase().includes(searchText.toLowerCase())
+    return matchesGenre && matchesText
+  })
 
   const API_URL = import.meta.env.VITE_API_URL
 
@@ -64,8 +84,38 @@ function App() {
         <h1 className="text-3xl font-bold text-gray-800 mb-8 border-b-2 border-blue-500 pb-2">
           今日見たもの ログ
         </h1>
+
+        <div className="bg-white rounded-lg shadow-md p-4 mb-6 space-y-3">
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="タイトル・感想で検索"
+            className="border border-gray-300 p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="flex flex-wrap gap-3">
+            {GENRES.map((genre) => (
+              <label key={genre} className="flex items-center gap-1 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={selectedGenres.includes(genre)}
+                  onChange={() => toggleGenre(genre)}
+                />
+                {genre}
+              </label>
+            ))}
+          </div>
+          <p className="text-sm text-gray-500">
+            {filteredReviews.length}件 / 全{reviews.length}件
+          </p>
+        </div>
+
+        {filteredReviews.length === 0 && (
+          <p className="text-center text-gray-500 py-10">該当するレビューがありません</p>
+        )}
+
         <div className="space-y-6">
-          {reviews.map((item) => (
+          {filteredReviews.map((item) => (
             <div key={item.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-sm text-blue-600 font-mono">{item.review_date}</span>
