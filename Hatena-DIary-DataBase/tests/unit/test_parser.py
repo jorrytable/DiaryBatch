@@ -127,6 +127,19 @@ def test_tv_program_keeps_nakaguro_inside_quoted_subtitle():
     assert results[0]['subtitle'] == "第1話「サスペンス・ホラー編」\n第2話「コメディ編」"
 
 
+def test_parenthesized_two_episodes_strips_parens():
+    content = (
+        "*** 今日見たもの\n"
+        "- [https://animestore.docomo.ne.jp/animestore/ci_pc?workId=99999:title] "
+        "(第1話・第2話)"
+        "[https://animestore.docomo.ne.jp/animestore/ci_pc?workId=99999:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['subtitle'] == "第1話\n第2話"
+
+
 def test_non_tv_item_has_empty_subtitle():
     content = "*** 今日見たもの\n- [https://www.youtube.com/watch?v=x:title=何かの動画]\n-- 良かった"
     results = parse_html_content(content, "2026-01-05")
@@ -179,7 +192,7 @@ def test_tv_anime_domain_bare_title_marker_with_parenthesized_episodes():
     assert results[0]['title'] is None
     assert results[0]['genre'] == "映像"
     assert results[0]['tags'] == ["TVアニメ"]
-    assert results[0]['subtitle'] == "(第3話\n第4話\n第5話)"
+    assert results[0]['subtitle'] == "第3話\n第4話\n第5話"
 
 
 def test_movie_line_without_url_is_captured():
