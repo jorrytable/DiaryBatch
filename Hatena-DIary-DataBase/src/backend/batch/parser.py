@@ -69,7 +69,8 @@ def parse_html_content(content_text: str,
                             remainder = remainder[1:]
                         remainder = remainder.split('[', 1)[0].strip()
                         if remainder:
-                            subtitle = remainder
+                            # 複数話をまとめて書く場合の区切り「・」は改行に変換する
+                            subtitle = remainder.replace('・', '\n')
 
                     current_item = {
                         'id': str(uuid.uuid4()),

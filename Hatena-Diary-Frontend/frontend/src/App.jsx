@@ -273,7 +273,7 @@ function App() {
                   )}
                 </h2>
                 {item.subtitle && (
-                  <p className="text-sm text-gray-500 mt-1">{item.subtitle}</p>
+                  <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{item.subtitle}</p>
                 )}
               </div>
               <EmbedPreview item={item} />

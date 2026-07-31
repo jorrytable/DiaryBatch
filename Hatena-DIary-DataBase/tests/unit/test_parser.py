@@ -90,6 +90,29 @@ def test_tv_program_with_single_quoted_segment():
     assert results[0]['subtitle'] == "「芸人大運動会2023★総勢59人の人気芸人が大集合」"
 
 
+def test_tv_program_with_multiple_episodes_converts_nakaguro_to_newlines():
+    content = (
+        "*** 今日見たもの\n"
+        "- TBSテレビ『[https://www.tbs.co.jp/umininemuru_diamond_tbs/:title=海に眠るダイヤモンド]』"
+        "第2話「スクエアダンス」・第3話「孤島の花」・第4話「沈黙」・第5話「一島一家」・"
+        "第6話「希望の種」・第7話「消えない火」・第8話「ダイヤモンド」"
+        "[https://www.tbs.co.jp/umininemuru_diamond_tbs/:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] == "海に眠るダイヤモンド"
+    assert results[0]['subtitle'] == (
+        "第2話「スクエアダンス」\n"
+        "第3話「孤島の花」\n"
+        "第4話「沈黙」\n"
+        "第5話「一島一家」\n"
+        "第6話「希望の種」\n"
+        "第7話「消えない火」\n"
+        "第8話「ダイヤモンド」"
+    )
+
+
 def test_non_tv_item_has_empty_subtitle():
     content = "*** 今日見たもの\n- [https://www.youtube.com/watch?v=x:title=何かの動画]\n-- 良かった"
     results = parse_html_content(content, "2026-01-05")
