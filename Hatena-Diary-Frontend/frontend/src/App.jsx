@@ -135,7 +135,12 @@ function App() {
   const [loading, setLoading] = useState(false)
 
   // 検索・フィルタ用の状態
+  // searchInputは検索ボックスの表示値（IME変換中の未確定文字列も含む）、
+  // searchTextはフィルタ判定に使う確定値。IME変換中はsearchTextを更新しないことで、
+  // 変換確定前の文字列で一覧が何度もちらつくのを防ぐ。
+  const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
+  const isComposingRef = useRef(false)
   const [selectedGenres, setSelectedGenres] = useState([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -227,18 +232,30 @@ function App() {
             <div className="relative">
               <input
                 type="text"
-                value={searchText}
+                value={searchInput}
                 onChange={(e) => {
+                  setSearchInput(e.target.value)
+                  if (!isComposingRef.current) {
+                    setSearchText(e.target.value)
+                    setCurrentPage(1)
+                  }
+                }}
+                onCompositionStart={() => {
+                  isComposingRef.current = true
+                }}
+                onCompositionEnd={(e) => {
+                  isComposingRef.current = false
                   setSearchText(e.target.value)
                   setCurrentPage(1)
                 }}
                 placeholder="タイトル・感想・タグで検索"
                 className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              {searchText !== '' && (
+              {searchInput !== '' && (
                 <button
                   type="button"
                   onClick={() => {
+                    setSearchInput('')
                     setSearchText('')
                     setCurrentPage(1)
                   }}
