@@ -101,6 +101,19 @@ def lambda_handler(event: any, context: any) -> str:
                 target[key] = metadata[key]
         return metadata
 
+    # 感想本文中のインラインリンク・埋め込みマーカーを先にエンリッチする。
+    # メインコンテンツ側は過去の大量履歴の遡及取得を伴い予算を使い切りがちなため、
+    # 後回しにすると感想内の埋め込みがいつまでも反映されない。件数が少ない
+    # 感想側を先に処理することで、限られた予算の中でも優先的に解決されるようにする。
+    for rev in all_reviews:
+        segments = rev.get('impression_segments')
+        if not segments:
+            continue
+        for seg in segments:
+            if seg['type'] in ('link', 'embed'):
+                enrich_one(seg, seg['url'])
+        rev['impression'] = flatten_impression_segments(segments)
+
     for rev in all_reviews:
         if rev.get('links'):
             # 1行複数リンクのアイテム：各リンクを個別にエンリッチし、titleは代表して結合する
@@ -128,17 +141,6 @@ def lambda_handler(event: any, context: any) -> str:
             rev['tags'] = existing_tags
         if metadata.get('is_music'):
             rev['genre'] = '音楽'
-
-    # 感想本文中のインラインリンク・埋め込みマーカーも同様にエンリッチする
-    # （links/url有無に関わらず、感想は独立して存在しうるため別ループで処理する）
-    for rev in all_reviews:
-        segments = rev.get('impression_segments')
-        if not segments:
-            continue
-        for seg in segments:
-            if seg['type'] in ('link', 'embed'):
-                enrich_one(seg, seg['url'])
-        rev['impression'] = flatten_impression_segments(segments)
 
     print(f"URLメタデータ：新規取得{newly_fetched}件（予算{ENRICH_BUDGET}件中）")
 
