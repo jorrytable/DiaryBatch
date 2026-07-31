@@ -7,6 +7,12 @@ function hasEmbeddableContent(item) {
   return Boolean(item.embed_html || item.og_title || item.og_description || item.og_image)
 }
 
+// YouTubeのような「動画」埋め込みかどうか。Spotify/SoundCloud等の
+// コンパクトなプレイヤー型埋め込みは16:9を強制すると高さが崩れるため区別する
+function isVideoEmbed(item) {
+  return Boolean(item.url && (item.url.includes('youtube.com') || item.url.includes('youtu.be')))
+}
+
 // oEmbedのiframeにネイティブ遅延読み込み属性を付与する（未指定の場合のみ）
 function withLazyLoading(html) {
   if (!html) return html
@@ -48,9 +54,12 @@ function LazyMount({ placeholderClassName, children }) {
 // 許可リスト化された信頼できるサービスのoEmbed応答のみが入る想定。
 function EmbedPreview({ item }) {
   if (item.embed_html) {
+    const embedClassName = isVideoEmbed(item)
+      ? "mb-3 [&_iframe]:w-full [&_iframe]:h-auto [&_iframe]:aspect-video"
+      : "mb-3 [&_iframe]:w-full"
     return (
       <div
-        className="mb-3 [&_iframe]:w-full [&_iframe]:h-auto [&_iframe]:aspect-video"
+        className={embedClassName}
         dangerouslySetInnerHTML={{ __html: withLazyLoading(item.embed_html) }}
       />
     )
@@ -82,9 +91,12 @@ function EmbedPreview({ item }) {
 
 // 埋め込み内容の種類に応じたプレースホルダーの見た目（レイアウトシフトを抑えるための概算サイズ）
 function embedPlaceholderClassName(item) {
-  return item.embed_html
-    ? "mb-3 aspect-video bg-gray-100 rounded animate-pulse"
-    : "mb-3 h-28 bg-gray-100 rounded animate-pulse"
+  if (item.embed_html) {
+    return isVideoEmbed(item)
+      ? "mb-3 aspect-video bg-gray-100 rounded animate-pulse"
+      : "mb-3 h-40 bg-gray-100 rounded animate-pulse"
+  }
+  return "mb-3 h-28 bg-gray-100 rounded animate-pulse"
 }
 
 function PaginationControls({ page, totalPages, onPrev, onNext }) {
