@@ -37,6 +37,67 @@ def test_url_with_bare_title_marker_has_no_title():
     assert kekka[0]['title'] is None
 
 
+def test_tv_program_with_episode_number_extracts_subtitle():
+    content = "*** 今日見たもの\n- TBSテレビ『[https://www.tbs.co.jp/VIVANT_tbs/:title=VIVANT]』第11話[https://www.tbs.co.jp/VIVANT_tbs/:embed]"
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] == "VIVANT"
+    assert results[0]['url'] == "https://www.tbs.co.jp/VIVANT_tbs/"
+    assert results[0]['genre'] == "映像"
+    assert results[0]['tags'] == ["テレビ"]
+    assert results[0]['subtitle'] == "第11話"
+
+
+def test_tv_program_with_episode_number_and_quoted_subtitle():
+    content = (
+        "*** 今日見たもの\n"
+        "- TBSテレビ『[https://www.tbs.co.jp/umininemuru_diamond_tbs/:title=海に眠るダイヤモンド]』"
+        "第2話「スクエアダンス」[https://www.tbs.co.jp/umininemuru_diamond_tbs/:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] == "海に眠るダイヤモンド"
+    assert results[0]['subtitle'] == "第2話「スクエアダンス」"
+
+
+def test_tv_program_with_multiple_quoted_segments_and_no_episode_number():
+    content = (
+        "*** 今日見たもの\n"
+        "- TBSテレビ『[https://www.tbs.co.jp/suiyobinodowntown/:title=水曜日のダウンタウン]』"
+        "「記憶喪失王決定戦」「大鶴肥満が酔い潰れたら一巻の終わり説」"
+        "[https://www.tbs.co.jp/suiyobinodowntown/:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] == "水曜日のダウンタウン"
+    assert results[0]['subtitle'] == "「記憶喪失王決定戦」「大鶴肥満が酔い潰れたら一巻の終わり説」"
+
+
+def test_tv_program_with_single_quoted_segment():
+    content = (
+        "*** 今日見たもの\n"
+        "- TBSテレビ『[https://www.tbs.co.jp/johnson_tbs/:title=ジョンソン]』"
+        "「芸人大運動会2023★総勢59人の人気芸人が大集合」"
+        "[https://www.tbs.co.jp/johnson_tbs/:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] == "ジョンソン"
+    assert results[0]['subtitle'] == "「芸人大運動会2023★総勢59人の人気芸人が大集合」"
+
+
+def test_non_tv_item_has_empty_subtitle():
+    content = "*** 今日見たもの\n- [https://www.youtube.com/watch?v=x:title=何かの動画]\n-- 良かった"
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['subtitle'] == ""
+
+
 def test_movie_line_without_url_is_captured():
     content = "*** 今日見たもの\n- 映画『花のあすか組』\n-- 面白かった"
     results = parse_html_content(content, "2026-01-05")

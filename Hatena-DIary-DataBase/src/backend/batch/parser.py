@@ -59,6 +59,18 @@ def parse_html_content(content_text: str,
                             quote_match = re.search(r'『(.+?)』', line)
                             title = quote_match.group(1) if quote_match else line[len('- '):].strip()
 
+                    # テレビタグの番組は「- 局名『[url:title=番組名]』第N話「サブタイトル」[url:embed]」のように
+                    # 番組名リンクの後ろに話数・「」区切りのサブタイトルが続く記法があるため、
+                    # 番組名の直後〜次の「[」（埋め込みリンク）までのテキストをsubtitleとして別項目に抜き出す
+                    subtitle = ""
+                    if url_match and title and 'テレビ' in tags:
+                        remainder = line[url_match.end():]
+                        if remainder.startswith('』'):
+                            remainder = remainder[1:]
+                        remainder = remainder.split('[', 1)[0].strip()
+                        if remainder:
+                            subtitle = remainder
+
                     current_item = {
                         'id': str(uuid.uuid4()),
                         'data_type': 'review',
@@ -67,7 +79,8 @@ def parse_html_content(content_text: str,
                         'url': url,
                         'genre': genre,
                         'tags': tags,
-                        'impression': ""
+                        'impression': "",
+                        'subtitle': subtitle
                     }
                 else:
                     current_item = None

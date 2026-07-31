@@ -262,15 +262,20 @@ function App() {
                   ))}
                 </div>
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-3">
-                {item.url ? (
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
-                    {item.title}
-                  </a>
-                ) : (
-                  item.title
+              <div className="mb-3">
+                <h2 className="text-xl font-bold text-gray-900">
+                  {item.url ? (
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
+                      {item.title}
+                    </a>
+                  ) : (
+                    item.title
+                  )}
+                </h2>
+                {item.subtitle && (
+                  <p className="text-sm text-gray-500 mt-1">{item.subtitle}</p>
                 )}
-              </h2>
+              </div>
               <EmbedPreview item={item} />
               <p className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
                 {item.impression}
