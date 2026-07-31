@@ -1,6 +1,8 @@
 import os
 import boto3
 import json
+import gzip
+import base64
 from boto3.dynamodb.conditions import Key
 
 # 設定
@@ -29,13 +31,22 @@ def lambda_handler(event, context):
                 break
             query_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
+        # Lambdaの同期呼び出し応答は6MBまでという上限があり、embed_html/OGP情報等の
+        # 増加でJSONが年々肥大化しているため、gzip圧縮してBase64で返す。
+        # fetch()はContent-Encoding: gzipを自動でデコードするためフロント側の変更は不要
+        # （API Gateway側はBinaryMediaTypesの設定でこのバイナリ応答をパススルーする）。
+        body_bytes = json.dumps(items, ensure_ascii=False).encode('utf-8')
+        compressed = gzip.compress(body_bytes)
+
         return {
             "statusCode": 200,
             "headers": {
                 "Content-Type": "application/json",
+                "Content-Encoding": "gzip",
                 "Access-Control-Allow-Origin": "*"  # 画面から呼ぶために必要
             },
-            "body": json.dumps(items, ensure_ascii=False)
+            "isBase64Encoded": True,
+            "body": base64.b64encode(compressed).decode('ascii')
         }
     except Exception as e:
         print(f"Error: {str(e)}")
