@@ -3,6 +3,38 @@ import re
 
 from batch.classify import classify_genre_and_tags, classify_from_content
 
+# 埋め込み専用ブラケット（[url:embed]）。自前でoEmbed/OGPを取得するため中身は使わず、
+# タイトル/サブタイトル抽出の邪魔にならないよう事前に取り除く
+_EMBED_BRACKET_RE = re.compile(r'\[https?://[^\s\]]+?:embed\]')
+
+# リンクとタイトルを抽出するパターン。[URL] / [URL:title] / [URL:title=カスタムタイトル] のいずれにも対応する。
+# URL部分は非貪欲マッチにして、":title"以降をURLに巻き込まないようにする。
+_URL_TITLE_RE = re.compile(r'\[(https?://[^\s\]]+?)(?::title(?:=([^\]]*))?)?\]')
+
+
+def _extract_subtitle(text: str) -> str:
+    # 動画・番組系のリンクは「[url:title=タイトル] 第N話「サブタイトル」」のように、
+    # リンクの後ろに話数・「」区切りのサブタイトルが続く記法があるため、その部分を抜き出す。
+    if text.startswith('』'):
+        text = text[1:]
+    text = text.strip()
+    # 複数リンクを" / "等で並記する記法の区切り文字だけが残った場合は中身なしとして扱う
+    text = text.strip('/').strip()
+    # 話数列挙全体が括弧で囲まれている場合、括弧自体は表示上不要なので取り除く
+    if (text.startswith('(') and text.endswith(')')) or \
+       (text.startswith('（') and text.endswith('）')):
+        text = text[1:-1].strip()
+    if not text:
+        return ""
+    # 複数話をまとめて書く場合の区切り「・」は改行に変換する。
+    # ただし「」で囲まれたサブタイトル文言内の「・」はそのまま残す
+    # （「」部分を丸ごと温存し、その外側だけを置換対象にする）
+    parts = re.split(r'(「[^」]*」)', text)
+    return ''.join(
+        part if part.startswith('「') else part.replace('・', '\n')
+        for part in parts
+    )
+
 
 def parse_html_content(content_text: str,
                        date_str: any) -> list:
@@ -10,7 +42,7 @@ def parse_html_content(content_text: str,
     lines = content_text.splitlines()
 
     is_target_section = False
-    current_item = None
+    current_items = []
 
     for line in lines:
         line = line.strip()
@@ -30,21 +62,43 @@ def parse_html_content(content_text: str,
             # 3. 作品名（行頭が「- 」で始まる行）
             if line.startswith('- '):
                 # 直前のアイテムがあれば保存
-                if current_item:
-                    results.append(current_item)
+                results.extend(current_items)
+                current_items = []
 
-                # リンクとタイトルを抽出。[URL] / [URL:title] / [URL:title=カスタムタイトル] のいずれの形式にも対応する。
-                # URL部分は非貪欲マッチにして、":title"以降をURLに巻き込まないようにする。
-                url_match = re.search(r'\[(https?://[^\s\]]+?)(?::title(?:=([^\]]*))?)?\]', line)
+                line_no_embed = _EMBED_BRACKET_RE.sub('', line)
+                url_matches = list(_URL_TITLE_RE.finditer(line_no_embed))
 
                 # URLが無くても「- 映画『』」「- TVアニメ『』」等の記法ならアイテムとして採用する
-                content_rule = classify_from_content(line)
+                content_rule = classify_from_content(line_no_embed)
 
-                if url_match or content_rule:
-                    if url_match:
-                        url = url_match.group(1)
+                if len(url_matches) >= 2:
+                    # "[url1:title] / [url2:title] / ..." のように1行に複数リンクが
+                    # 並記されている場合は、それぞれ独立したアイテムに分割する
+                    for i, m in enumerate(url_matches):
+                        url = m.group(1)
+                        title = m.group(2)
+                        genre, tags = classify_genre_and_tags(url)
+
+                        start = m.end()
+                        end = url_matches[i + 1].start() if i + 1 < len(url_matches) else len(line_no_embed)
+                        subtitle = _extract_subtitle(line_no_embed[start:end])
+
+                        current_items.append({
+                            'id': str(uuid.uuid4()),
+                            'data_type': 'review',
+                            'review_date': date_str,
+                            'title': title,
+                            'url': url,
+                            'genre': genre,
+                            'tags': tags,
+                            'impression': "",
+                            'subtitle': subtitle
+                        })
+                elif url_matches or content_rule:
+                    if url_matches:
+                        url = url_matches[0].group(1)
                         # カスタムタイトル（:title=）があれば取得、なければNone＝後段でページタイトルを取得する必要ありのマーカー
-                        title = url_match.group(2)
+                        title = url_matches[0].group(2)
                         genre, tags = classify_genre_and_tags(url)
                     else:
                         url = ""
@@ -56,34 +110,13 @@ def parse_html_content(content_text: str,
                         if content_rule[1] not in tags:
                             tags = tags + [content_rule[1]]
                         if title is None:
-                            quote_match = re.search(r'『(.+?)』', line)
-                            title = quote_match.group(1) if quote_match else line[len('- '):].strip()
+                            quote_match = re.search(r'『(.+?)』', line_no_embed)
+                            title = quote_match.group(1) if quote_match else line_no_embed[len('- '):].strip()
 
-                    # 動画・番組系のリンクは「[url:title=タイトル] 第N話「サブタイトル」[url:embed]」のように
-                    # リンクの後ろに話数・「」区切りのサブタイトルが続く記法があるため、
-                    # リンクの直後〜次の「[」（埋め込みリンク）までのテキストをsubtitleとして別項目に抜き出す。
                     # ジャンル・タグは問わない（テレビ局サイトに限らずAmazon Prime Video等でも同じ記法が使われるため）
-                    subtitle = ""
-                    if url_match:
-                        remainder = line[url_match.end():]
-                        if remainder.startswith('』'):
-                            remainder = remainder[1:]
-                        remainder = remainder.split('[', 1)[0].strip()
-                        # 話数列挙全体が括弧で囲まれている場合、括弧自体は表示上不要なので取り除く
-                        if (remainder.startswith('(') and remainder.endswith(')')) or \
-                           (remainder.startswith('（') and remainder.endswith('）')):
-                            remainder = remainder[1:-1].strip()
-                        if remainder:
-                            # 複数話をまとめて書く場合の区切り「・」は改行に変換する。
-                            # ただし「」で囲まれたサブタイトル文言内の「・」はそのまま残す
-                            # （「」部分を丸ごと温存し、その外側だけを置換対象にする）
-                            parts = re.split(r'(「[^」]*」)', remainder)
-                            subtitle = ''.join(
-                                part if part.startswith('「') else part.replace('・', '\n')
-                                for part in parts
-                            )
+                    subtitle = _extract_subtitle(line_no_embed[url_matches[0].end():]) if url_matches else ""
 
-                    current_item = {
+                    current_items.append({
                         'id': str(uuid.uuid4()),
                         'data_type': 'review',
                         'review_date': date_str,
@@ -93,23 +126,23 @@ def parse_html_content(content_text: str,
                         'tags': tags,
                         'impression': "",
                         'subtitle': subtitle
-                    }
-                else:
-                    current_item = None
+                    })
+                # どちらにも該当しない場合、current_itemsは空のまま（このアイテムは不採用）
 
             # 4. 感想（行頭が「-- 」で始まる行）
-            elif line.startswith('-- ') and current_item:
+            elif line.startswith('-- ') and current_items:
                 impression = line.lstrip('- ').strip()
                 # 脚注記号 ((...)) などを除去（任意ですが、きれいに見せるため）
                 impression = re.sub(r'\(\(.*?\)\)', '', impression)
 
-                if current_item['impression']:
-                    current_item['impression'] += "\n" + impression
-                else:
-                    current_item['impression'] = impression
+                # 1つの「- 」行から複数アイテムに分割された場合、感想は全アイテムに反映する
+                for item in current_items:
+                    if item['impression']:
+                        item['impression'] += "\n" + impression
+                    else:
+                        item['impression'] = impression
 
     # 最後のアイテムをリストに追加
-    if current_item:
-        results.append(current_item)
+    results.extend(current_items)
 
     return results

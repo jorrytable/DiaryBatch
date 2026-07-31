@@ -17,6 +17,52 @@ def test_kanryo():
     print("\n★テスト成功！正しく抜き出せています★")
 
 
+def test_multi_link_spotify_line_splits_into_separate_items():
+    content = (
+        "*** 今日見たもの\n"
+        "- [https://open.spotify.com/episode/7oAW6149hWPcAVihImVuAl:title] / "
+        "[https://open.spotify.com/episode/1CramcCoktxTn8xcUDUij3:title]"
+        "[https://open.spotify.com/episode/7oAW6149hWPcAVihImVuAl:embed]"
+        "[https://open.spotify.com/episode/1CramcCoktxTn8xcUDUij3:embed]\n"
+        "-- どちらも面白かった"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 2
+    assert results[0]['url'] == "https://open.spotify.com/episode/7oAW6149hWPcAVihImVuAl"
+    assert results[0]['genre'] == "ラジオ"
+    assert results[0]['subtitle'] == ""
+    assert results[0]['impression'] == "どちらも面白かった"
+    assert results[1]['url'] == "https://open.spotify.com/episode/1CramcCoktxTn8xcUDUij3"
+    assert results[1]['genre'] == "ラジオ"
+    assert results[1]['subtitle'] == ""
+    assert results[1]['impression'] == "どちらも面白かった"
+    # 各アイテムは独立したidを持つ
+    assert results[0]['id'] != results[1]['id']
+
+
+def test_multi_link_youtube_line_splits_into_three_items():
+    content = (
+        "*** 今日見たもの\n"
+        "- [https://youtu.be/wAF0DOomCdk:title] / "
+        "[https://youtu.be/6omZRLUmSVA:title] / "
+        "[https://youtu.be/kk_-1-fsHlM:title]"
+        "[https://youtu.be/wAF0DOomCdk:embed]"
+        "[https://youtu.be/6omZRLUmSVA:embed]"
+        "[https://youtu.be/kk_-1-fsHlM:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 3
+    assert [r['url'] for r in results] == [
+        "https://youtu.be/wAF0DOomCdk",
+        "https://youtu.be/6omZRLUmSVA",
+        "https://youtu.be/kk_-1-fsHlM",
+    ]
+    assert all(r['genre'] == "映像" for r in results)
+    assert all(r['subtitle'] == "" for r in results)
+
+
 def test_url_with_custom_title_notation_extracts_bare_url():
     # [url:title=カスタムタイトル] 形式で、URLに ":title=..." が混入しないことを確認
     content = "*** 今日見たもの\n- [http://x.com:title=テスト動画]\n-- 面白かった"
