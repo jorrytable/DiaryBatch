@@ -135,6 +135,53 @@ def test_non_tv_item_has_empty_subtitle():
     assert results[0]['subtitle'] == ""
 
 
+def test_amazon_prime_video_subtitle_extracted_without_tv_tag():
+    # テレビタグが付かないジャンル（映像、タグなし）でも、リンク直後の話数表記はsubtitleに抜き出す
+    content = (
+        "*** 今日見たもの\n"
+        "- [https://watch.amazon.co.jp/detail?gti=amzn1.dv.gti.b2acd844-523a-5e5d-e9ff-578863f17b19"
+        ":title=カルテット | Amazon Prime Video] 第1話・第2話"
+        "[https://watch.amazon.co.jp/detail?gti=amzn1.dv.gti.b2acd844-523a-5e5d-e9ff-578863f17b19:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['genre'] == "映像"
+    assert results[0]['tags'] == []
+    assert results[0]['subtitle'] == "第1話\n第2話"
+
+
+def test_tv_anime_content_rule_line_with_url_extracts_subtitle():
+    content = (
+        "*** 今日見たもの\n"
+        "- TVアニメ『[https://yurucamp.jp/third/:title=ゆるキャン△ SEASON3]』"
+        "第3話「出発! 吊り橋の国」[https://yurucamp.jp/third/:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] == "ゆるキャン△ SEASON3"
+    assert results[0]['genre'] == "映像"
+    assert results[0]['tags'] == ["TVアニメ"]
+    assert results[0]['subtitle'] == "第3話「出発! 吊り橋の国」"
+
+
+def test_tv_anime_domain_bare_title_marker_with_parenthesized_episodes():
+    content = (
+        "*** 今日見たもの\n"
+        "- [https://animestore.docomo.ne.jp/animestore/ci_pc?workId=25330:title] "
+        "(第3話・第4話・第5話)"
+        "[https://animestore.docomo.ne.jp/animestore/ci_pc?workId=25330:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['title'] is None
+    assert results[0]['genre'] == "映像"
+    assert results[0]['tags'] == ["TVアニメ"]
+    assert results[0]['subtitle'] == "(第3話\n第4話\n第5話)"
+
+
 def test_movie_line_without_url_is_captured():
     content = "*** 今日見たもの\n- 映画『花のあすか組』\n-- 面白かった"
     results = parse_html_content(content, "2026-01-05")

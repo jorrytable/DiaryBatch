@@ -9,6 +9,10 @@ def test_classify_genre_subdomain():
     assert classify_genre_and_tags("https://m.youtube.com/watch?v=x") == ("映像", [])
 
 
+def test_classify_genre_amazon_prime_video():
+    assert classify_genre_and_tags("https://watch.amazon.co.jp/detail?gti=abc") == ("映像", [])
+
+
 def test_classify_genre_unknown_domain():
     assert classify_genre_and_tags("https://example.com/page") == ("その他", [])
 

@@ -59,11 +59,12 @@ def parse_html_content(content_text: str,
                             quote_match = re.search(r'『(.+?)』', line)
                             title = quote_match.group(1) if quote_match else line[len('- '):].strip()
 
-                    # テレビタグの番組は「- 局名『[url:title=番組名]』第N話「サブタイトル」[url:embed]」のように
-                    # 番組名リンクの後ろに話数・「」区切りのサブタイトルが続く記法があるため、
-                    # 番組名の直後〜次の「[」（埋め込みリンク）までのテキストをsubtitleとして別項目に抜き出す
+                    # 動画・番組系のリンクは「[url:title=タイトル] 第N話「サブタイトル」[url:embed]」のように
+                    # リンクの後ろに話数・「」区切りのサブタイトルが続く記法があるため、
+                    # リンクの直後〜次の「[」（埋め込みリンク）までのテキストをsubtitleとして別項目に抜き出す。
+                    # ジャンル・タグは問わない（テレビ局サイトに限らずAmazon Prime Video等でも同じ記法が使われるため）
                     subtitle = ""
-                    if url_match and title and 'テレビ' in tags:
+                    if url_match:
                         remainder = line[url_match.end():]
                         if remainder.startswith('』'):
                             remainder = remainder[1:]

@@ -12,6 +12,7 @@ DOMAIN_RULES = {
     'abema.tv': ('映像', []),
     'netflix.com': ('映像', []),
     'twitch.tv': ('映像', []),
+    'watch.amazon.co.jp': ('映像', []),
     'animestore.docomo.ne.jp': ('映像', ['TVアニメ']),
     # 地上波・BSキー局・お笑い賞レース等（タグ「テレビ」）
     'nhk.or.jp': ('映像', ['テレビ']),
