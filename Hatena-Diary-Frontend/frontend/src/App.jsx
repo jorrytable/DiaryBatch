@@ -1,6 +1,47 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'ラジオ', 'その他']
+
+// このアイテム（またはlinks配列内の1件）にEmbedPreviewで表示できる内容があるかどうか
+function hasEmbeddableContent(item) {
+  return Boolean(item.embed_html || item.og_title || item.og_description || item.og_image)
+}
+
+// oEmbedのiframeにネイティブ遅延読み込み属性を付与する（未指定の場合のみ）
+function withLazyLoading(html) {
+  if (!html) return html
+  if (/<iframe\b[^>]*\bloading=/i.test(html)) return html
+  return html.replace(/<iframe\b/i, '<iframe loading="lazy"')
+}
+
+// IntersectionObserverで画面に近づくまで子要素の実体をマウントしない。
+// スマートフォンで1ページあたり多数のYouTube/Spotify埋め込みiframeが
+// 一斉に読み込まれて重くなる問題への対策（一度表示されたら以後はマウントを維持する）。
+function LazyMount({ placeholderClassName, children }) {
+  const ref = useRef(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (visible || !ref.current) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '300px' }
+    )
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [visible])
+
+  if (visible) {
+    return children
+  }
+
+  return <div ref={ref} className={placeholderClassName} />
+}
 
 // oEmbed(embed_html)があればそれを埋め込み表示、無ければOGP情報で簡易プレビューカードを表示。
 // どちらも無ければ何も表示しない。embed_htmlはYouTube/Spotify/SoundCloud等、
@@ -10,7 +51,7 @@ function EmbedPreview({ item }) {
     return (
       <div
         className="mb-3 [&_iframe]:w-full [&_iframe]:aspect-video"
-        dangerouslySetInnerHTML={{ __html: item.embed_html }}
+        dangerouslySetInnerHTML={{ __html: withLazyLoading(item.embed_html) }}
       />
     )
   }
@@ -24,7 +65,7 @@ function EmbedPreview({ item }) {
         className="mb-3 flex gap-3 border border-gray-200 rounded overflow-hidden hover:bg-gray-50 transition"
       >
         {item.og_image && (
-          <img src={item.og_image} alt="" className="w-28 h-28 object-cover flex-shrink-0" />
+          <img src={item.og_image} alt="" loading="lazy" className="w-28 h-28 object-cover flex-shrink-0" />
         )}
         <div className="p-2 overflow-hidden">
           {item.og_title && <p className="font-bold text-sm text-gray-800 truncate">{item.og_title}</p>}
@@ -37,6 +78,13 @@ function EmbedPreview({ item }) {
   }
 
   return null
+}
+
+// 埋め込み内容の種類に応じたプレースホルダーの見た目（レイアウトシフトを抑えるための概算サイズ）
+function embedPlaceholderClassName(item) {
+  return item.embed_html
+    ? "mb-3 aspect-video bg-gray-100 rounded animate-pulse"
+    : "mb-3 h-28 bg-gray-100 rounded animate-pulse"
 }
 
 function PaginationControls({ page, totalPages, onPrev, onNext }) {
@@ -63,7 +111,7 @@ function PaginationControls({ page, totalPages, onPrev, onNext }) {
   )
 }
 
-const PAGE_SIZE = 100
+const PAGE_SIZE = 50
 
 function App() {
   // 認証用の状態
@@ -298,9 +346,19 @@ function App() {
                 </div>
               )}
               {item.links ? (
-                item.links.map((link, i) => <EmbedPreview key={i} item={link} />)
+                item.links.map((link, i) => (
+                  hasEmbeddableContent(link) ? (
+                    <LazyMount key={i} placeholderClassName={embedPlaceholderClassName(link)}>
+                      <EmbedPreview item={link} />
+                    </LazyMount>
+                  ) : null
+                ))
               ) : (
-                <EmbedPreview item={item} />
+                hasEmbeddableContent(item) && (
+                  <LazyMount placeholderClassName={embedPlaceholderClassName(item)}>
+                    <EmbedPreview item={item} />
+                  </LazyMount>
+                )
               )}
               <p className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
                 {item.impression}
