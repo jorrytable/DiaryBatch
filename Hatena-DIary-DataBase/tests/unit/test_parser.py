@@ -17,7 +17,7 @@ def test_kanryo():
     print("\n★テスト成功！正しく抜き出せています★")
 
 
-def test_multi_link_spotify_line_splits_into_separate_items():
+def test_multi_link_spotify_line_becomes_single_item_with_links():
     content = (
         "*** 今日見たもの\n"
         "- [https://open.spotify.com/episode/7oAW6149hWPcAVihImVuAl:title] / "
@@ -28,20 +28,17 @@ def test_multi_link_spotify_line_splits_into_separate_items():
     )
     results = parse_html_content(content, "2026-01-05")
 
-    assert len(results) == 2
-    assert results[0]['url'] == "https://open.spotify.com/episode/7oAW6149hWPcAVihImVuAl"
+    assert len(results) == 1
     assert results[0]['genre'] == "ラジオ"
-    assert results[0]['subtitle'] == ""
     assert results[0]['impression'] == "どちらも面白かった"
-    assert results[1]['url'] == "https://open.spotify.com/episode/1CramcCoktxTn8xcUDUij3"
-    assert results[1]['genre'] == "ラジオ"
-    assert results[1]['subtitle'] == ""
-    assert results[1]['impression'] == "どちらも面白かった"
-    # 各アイテムは独立したidを持つ
-    assert results[0]['id'] != results[1]['id']
+    assert len(results[0]['links']) == 2
+    assert results[0]['links'][0]['url'] == "https://open.spotify.com/episode/7oAW6149hWPcAVihImVuAl"
+    assert results[0]['links'][0]['subtitle'] == ""
+    assert results[0]['links'][1]['url'] == "https://open.spotify.com/episode/1CramcCoktxTn8xcUDUij3"
+    assert results[0]['links'][1]['subtitle'] == ""
 
 
-def test_multi_link_youtube_line_splits_into_three_items():
+def test_multi_link_youtube_line_becomes_single_item_with_three_links():
     content = (
         "*** 今日見たもの\n"
         "- [https://youtu.be/wAF0DOomCdk:title] / "
@@ -53,14 +50,14 @@ def test_multi_link_youtube_line_splits_into_three_items():
     )
     results = parse_html_content(content, "2026-01-05")
 
-    assert len(results) == 3
-    assert [r['url'] for r in results] == [
+    assert len(results) == 1
+    assert results[0]['genre'] == "映像"
+    assert [l['url'] for l in results[0]['links']] == [
         "https://youtu.be/wAF0DOomCdk",
         "https://youtu.be/6omZRLUmSVA",
         "https://youtu.be/kk_-1-fsHlM",
     ]
-    assert all(r['genre'] == "映像" for r in results)
-    assert all(r['subtitle'] == "" for r in results)
+    assert all(l['subtitle'] == "" for l in results[0]['links'])
 
 
 def test_url_with_custom_title_notation_extracts_bare_url():

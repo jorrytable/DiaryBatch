@@ -72,26 +72,50 @@ def lambda_handler(event: any, context: any) -> str:
 
     # 4. URLメタデータキャッシュを参照し、titleが未確定(:title指定なし)のアイテムに
     #    実際のページタイトルを補完、embed_html/OGP情報も付与する
+    #    （1行に複数リンクが並記されたアイテムは`links`配列に複数URLを持つため、そちらも対象に含める）
     cache_table = dynamodb.Table(URL_CACHE_TABLE_NAME)
-    cached = batch_get_cached(dynamodb_client, URL_CACHE_TABLE_NAME, [rev['url'] for rev in all_reviews if rev['url']])
+    all_urls = []
+    for rev in all_reviews:
+        if rev['url']:
+            all_urls.append(rev['url'])
+        all_urls.extend(link['url'] for link in rev.get('links', []))
+    cached = batch_get_cached(dynamodb_client, URL_CACHE_TABLE_NAME, all_urls)
     budget = {'remaining': ENRICH_BUDGET}
     newly_fetched = 0
 
-    for rev in all_reviews:
-        # 「- 映画『』」等、URLを持たないアイテムはエンリッチ対象外
-        if not rev['url']:
-            metadata = {}
-        else:
-            before = budget['remaining']
-            metadata = get_or_fetch(cache_table, rev['url'], cached, budget, youtube_api_key)
-            if budget['remaining'] < before:
-                newly_fetched += 1
+    def enrich_one(target: dict, url: str):
+        nonlocal newly_fetched
+        before = budget['remaining']
+        metadata = get_or_fetch(cache_table, url, cached, budget, youtube_api_key)
+        if budget['remaining'] < before:
+            newly_fetched += 1
 
-        if rev['title'] is None:
-            rev['title'] = metadata.get('title') or rev['url']
+        if target['title'] is None:
+            target['title'] = metadata.get('title') or url
         for key in ('embed_html', 'og_title', 'og_description', 'og_image'):
             if metadata.get(key):
-                rev[key] = metadata[key]
+                target[key] = metadata[key]
+        return metadata
+
+    for rev in all_reviews:
+        if rev.get('links'):
+            # 1行複数リンクのアイテム：各リンクを個別にエンリッチし、titleは代表して結合する
+            for link in rev['links']:
+                metadata = enrich_one(link, link['url'])
+                if metadata.get('tags'):
+                    for tag in metadata['tags']:
+                        if tag not in rev['tags']:
+                            rev['tags'].append(tag)
+                if metadata.get('is_music'):
+                    rev['genre'] = '音楽'
+            rev['title'] = " / ".join(link['title'] for link in rev['links'] if link.get('title')) or None
+            continue
+
+        # 「- 映画『』」等、URLを持たないアイテムはエンリッチ対象外
+        if not rev['url']:
+            continue
+
+        metadata = enrich_one(rev, rev['url'])
         if metadata.get('tags'):
             existing_tags = rev.get('tags', [])
             for tag in metadata['tags']:

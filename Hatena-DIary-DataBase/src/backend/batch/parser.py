@@ -73,27 +73,38 @@ def parse_html_content(content_text: str,
 
                 if len(url_matches) >= 2:
                     # "[url1:title] / [url2:title] / ..." のように1行に複数リンクが
-                    # 並記されている場合は、それぞれ独立したアイテムに分割する
+                    # 並記されている場合は、ブログ本文の見た目どおり1アイテムにまとめる
+                    # （タイトルを並べた後にすべての埋め込みを続けて表示する）。
+                    # ジャンル・タグはリンク群を代表して先頭リンクの判定を採用する。
+                    links = []
                     for i, m in enumerate(url_matches):
                         url = m.group(1)
                         title = m.group(2)
-                        genre, tags = classify_genre_and_tags(url)
 
                         start = m.end()
                         end = url_matches[i + 1].start() if i + 1 < len(url_matches) else len(line_no_embed)
                         subtitle = _extract_subtitle(line_no_embed[start:end])
 
-                        current_items.append({
-                            'id': str(uuid.uuid4()),
-                            'data_type': 'review',
-                            'review_date': date_str,
-                            'title': title,
+                        links.append({
                             'url': url,
-                            'genre': genre,
-                            'tags': tags,
-                            'impression': "",
+                            'title': title,
                             'subtitle': subtitle
                         })
+
+                    genre, tags = classify_genre_and_tags(links[0]['url'])
+
+                    current_items.append({
+                        'id': str(uuid.uuid4()),
+                        'data_type': 'review',
+                        'review_date': date_str,
+                        'title': None,
+                        'url': "",
+                        'genre': genre,
+                        'tags': tags,
+                        'impression': "",
+                        'subtitle': "",
+                        'links': links
+                    })
                 elif url_matches or content_rule:
                     if url_matches:
                         url = url_matches[0].group(1)
