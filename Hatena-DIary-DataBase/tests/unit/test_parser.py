@@ -1,7 +1,7 @@
 import sys
 print(sys.path)
 
-from src.backend.batch.parser import parse_html_content
+from src.backend.batch.parser import parse_html_content, tokenize_impression, flatten_impression_segments
 
 def test_kanryo():
     # 実際のはてな記法（プレーンテキスト）に合わせたニセ日記データ
@@ -15,6 +15,68 @@ def test_kanryo():
     assert kekka[0]['url'] == "http://x.com"
     assert kekka[0]['impression'] == "面白かった"
     print("\n★テスト成功！正しく抜き出せています★")
+
+
+def test_tokenize_impression_no_notation_returns_none():
+    assert tokenize_impression("普通の感想文だけ") is None
+
+
+def test_tokenize_impression_link_and_embed_real_example():
+    text = (
+        "[https://youtu.be/9BB8zcWZ3VU:title=前の動画]を見返していたら本当にパフォーマンスが高すぎて"
+        "腹捩れたので、頼むから幸せになってほしいなと願わずにはいられなかった 叶え！"
+        "[https://youtu.be/9BB8zcWZ3VU:embed]"
+    )
+    segments = tokenize_impression(text)
+
+    assert segments == [
+        {'type': 'link', 'url': 'https://youtu.be/9BB8zcWZ3VU', 'title': '前の動画'},
+        {
+            'type': 'text',
+            'text': (
+                "を見返していたら本当にパフォーマンスが高すぎて腹捩れたので、"
+                "頼むから幸せになってほしいなと願わずにはいられなかった 叶え！"
+            ),
+        },
+        {'type': 'embed', 'url': 'https://youtu.be/9BB8zcWZ3VU', 'title': None},
+    ]
+
+
+def test_flatten_impression_segments_uses_title_and_skips_embed():
+    segments = [
+        {'type': 'link', 'url': 'https://x.com', 'title': 'リンク先'},
+        {'type': 'text', 'text': 'を見た'},
+        {'type': 'embed', 'url': 'https://x.com', 'title': None},
+    ]
+    assert flatten_impression_segments(segments) == "リンク先を見た"
+
+
+def test_flatten_impression_segments_falls_back_to_url_when_title_unresolved():
+    segments = [{'type': 'link', 'url': 'https://x.com', 'title': None}]
+    assert flatten_impression_segments(segments) == "https://x.com"
+
+
+def test_parse_html_content_impression_with_inline_link_and_embed():
+    content = (
+        "*** 今日見たもの\n"
+        "- [https://youtu.be/9BB8zcWZ3VU:title=前の動画]\n"
+        "-- [https://youtu.be/AAAA:title=別の動画]を見返していたら最高だった[https://youtu.be/AAAA:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    segments = results[0]['impression_segments']
+    assert segments[0] == {'type': 'link', 'url': 'https://youtu.be/AAAA', 'title': '別の動画'}
+    assert segments[-1] == {'type': 'embed', 'url': 'https://youtu.be/AAAA', 'title': None}
+    assert results[0]['impression'] == "別の動画を見返していたら最高だった"
+
+
+def test_parse_html_content_impression_without_notation_has_no_segments():
+    content = "*** 今日見たもの\n- [http://x.com]\n-- 普通の感想"
+    results = parse_html_content(content, "2026-01-05")
+
+    assert 'impression_segments' not in results[0]
+    assert results[0]['impression'] == "普通の感想"
 
 
 def test_multi_link_spotify_line_becomes_single_item_with_links():

@@ -11,6 +11,51 @@ _EMBED_BRACKET_RE = re.compile(r'\[https?://[^\s\]]+?:embed\]')
 # URL部分は非貪欲マッチにして、":title"以降をURLに巻き込まないようにする。
 _URL_TITLE_RE = re.compile(r'\[(https?://[^\s\]]+?)(?::title(?:=([^\]]*))?)?\]')
 
+# 感想本文中に残るはてな記法（[url] / [url:title] / [url:title=カスタムタイトル] / [url:embed]）を検出するパターン
+_IMPRESSION_TOKEN_RE = re.compile(r'\[(https?://[^\s\]]+?)(?::(title(?:=([^\]]*))?|embed))?\]')
+
+
+def tokenize_impression(text: str):
+    # 感想本文中のはてな記法（インラインリンク・埋め込みマーカー）をテキスト/リンク/埋め込みの
+    # セグメント列に分解する。記法が1つも無ければNoneを返す（呼び出し側は生テキスト表示にフォールバックする）。
+    matches = list(_IMPRESSION_TOKEN_RE.finditer(text))
+    if not matches:
+        return None
+
+    segments = []
+    pos = 0
+    for m in matches:
+        if m.start() > pos:
+            segments.append({'type': 'text', 'text': text[pos:m.start()]})
+
+        url = m.group(1)
+        modifier = m.group(2)
+        if modifier == 'embed':
+            segments.append({'type': 'embed', 'url': url, 'title': None})
+        else:
+            # :title= があればそれを使い、無ければNone（後段のenrichで解決するマーカー）
+            title = m.group(3) if modifier else None
+            segments.append({'type': 'link', 'url': url, 'title': title})
+
+        pos = m.end()
+
+    if pos < len(text):
+        segments.append({'type': 'text', 'text': text[pos:]})
+
+    return segments
+
+
+def flatten_impression_segments(segments) -> str:
+    # 検索対象の平文impressionを再構成する。テキストはそのまま、リンクはtitle（未確定ならurl）、
+    # 埋め込みは意味のある平文が無いため何も出力しない。
+    parts = []
+    for seg in segments:
+        if seg['type'] == 'text':
+            parts.append(seg['text'])
+        elif seg['type'] == 'link':
+            parts.append(seg.get('title') or seg['url'])
+    return ''.join(parts)
+
 
 def _extract_subtitle(text: str) -> str:
     # 動画・番組系のリンクは「[url:title=タイトル] 第N話「サブタイトル」」のように、
@@ -155,5 +200,13 @@ def parse_html_content(content_text: str,
 
     # 最後のアイテムをリストに追加
     results.extend(current_items)
+
+    # 感想本文にはてな記法（インラインリンク・埋め込みマーカー）が残っていれば
+    # セグメント配列に分解する。無ければimpressionは生テキストのまま。
+    for item in results:
+        segments = tokenize_impression(item['impression'])
+        if segments is not None:
+            item['impression_segments'] = segments
+            item['impression'] = flatten_impression_segments(segments)
 
     return results

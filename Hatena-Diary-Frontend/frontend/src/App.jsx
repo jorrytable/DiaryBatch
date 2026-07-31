@@ -389,9 +389,29 @@ function App() {
                   </LazyMount>
                 )
               )}
-              <p className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
-                {item.impression}
-              </p>
+              <div className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
+                {item.impression_segments ? (
+                  item.impression_segments.map((seg, i) => {
+                    if (seg.type === 'link') {
+                      return (
+                        <a key={i} href={seg.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                          {seg.title}
+                        </a>
+                      )
+                    }
+                    if (seg.type === 'embed') {
+                      return hasEmbeddableContent(seg) ? (
+                        <LazyMount key={i} placeholderClassName={embedPlaceholderClassName(seg)}>
+                          <EmbedPreview item={seg} />
+                        </LazyMount>
+                      ) : null
+                    }
+                    return seg.text
+                  })
+                ) : (
+                  item.impression
+                )}
+              </div>
             </div>
           ))}
         </div>

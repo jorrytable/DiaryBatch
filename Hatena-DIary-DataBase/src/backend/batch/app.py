@@ -2,7 +2,7 @@ import os
 import boto3
 import requests
 from bs4 import BeautifulSoup
-from batch.parser import parse_html_content
+from batch.parser import parse_html_content, flatten_impression_segments
 from batch.enrich import batch_get_cached, get_or_fetch
 from common.models import ReviewItem
 
@@ -79,6 +79,10 @@ def lambda_handler(event: any, context: any) -> str:
         if rev['url']:
             all_urls.append(rev['url'])
         all_urls.extend(link['url'] for link in rev.get('links', []))
+        all_urls.extend(
+            seg['url'] for seg in rev.get('impression_segments', [])
+            if seg['type'] in ('link', 'embed')
+        )
     cached = batch_get_cached(dynamodb_client, URL_CACHE_TABLE_NAME, all_urls)
     budget = {'remaining': ENRICH_BUDGET}
     newly_fetched = 0
@@ -124,6 +128,17 @@ def lambda_handler(event: any, context: any) -> str:
             rev['tags'] = existing_tags
         if metadata.get('is_music'):
             rev['genre'] = '音楽'
+
+    # 感想本文中のインラインリンク・埋め込みマーカーも同様にエンリッチする
+    # （links/url有無に関わらず、感想は独立して存在しうるため別ループで処理する）
+    for rev in all_reviews:
+        segments = rev.get('impression_segments')
+        if not segments:
+            continue
+        for seg in segments:
+            if seg['type'] in ('link', 'embed'):
+                enrich_one(seg, seg['url'])
+        rev['impression'] = flatten_impression_segments(segments)
 
     print(f"URLメタデータ：新規取得{newly_fetched}件（予算{ENRICH_BUDGET}件中）")
 
