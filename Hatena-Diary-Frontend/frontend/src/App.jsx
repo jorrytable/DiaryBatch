@@ -2,6 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 
 const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'ラジオ', 'その他']
 
+// 検索APIはLambdaの応答サイズ上限(6MB)対策として、gzip圧縮したJSONをBase64文字列で返す。
+// （API GatewayのBinaryMediaTypesはCORSプリフライトを壊すため使わず、ここで手動展開する）
+async function decodeGzipBase64Json(base64Text) {
+  const binary = Uint8Array.from(atob(base64Text), (c) => c.charCodeAt(0))
+  const stream = new Blob([binary]).stream().pipeThrough(new DecompressionStream('gzip'))
+  const text = await new Response(stream).text()
+  return JSON.parse(text)
+}
+
 // このアイテム（またはlinks配列内の1件）にEmbedPreviewで表示できる内容があるかどうか
 function hasEmbeddableContent(item) {
   return Boolean(item.embed_html || item.og_title || item.og_description || item.og_image)
@@ -185,8 +194,9 @@ function App() {
     })
       .then(res => {
         if (!res.ok) throw new Error('unauthorized')
-        return res.json()
+        return res.text()
       })
+      .then(decodeGzipBase64Json)
       .then(data => {
         setReviews(data)
         setIsAuthenticated(true)

@@ -32,20 +32,21 @@ def lambda_handler(event, context):
             query_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
 
         # Lambdaの同期呼び出し応答は6MBまでという上限があり、embed_html/OGP情報等の
-        # 増加でJSONが年々肥大化しているため、gzip圧縮してBase64で返す。
-        # fetch()はContent-Encoding: gzipを自動でデコードするためフロント側の変更は不要
-        # （API Gateway側はBinaryMediaTypesの設定でこのバイナリ応答をパススルーする）。
+        # 増加でJSONが年々肥大化しているため、gzip圧縮してBase64文字列として返す。
+        # （API GatewayのBinary MediaTypes機能は使わない。設定するとCORSプリフライト
+        #  =OPTIONSのMock統合の応答まで巻き込まれて500エラーになったため。
+        #  isBase64Encodedを使わずbodyを普通の文字列として返せばAPI Gatewayは
+        #  一切関与せずそのままフロントに届くので、フロント側でbase64デコード＋
+        #  gunzipする方式にしている）
         body_bytes = json.dumps(items, ensure_ascii=False).encode('utf-8')
         compressed = gzip.compress(body_bytes)
 
         return {
             "statusCode": 200,
             "headers": {
-                "Content-Type": "application/json",
-                "Content-Encoding": "gzip",
+                "Content-Type": "text/plain",
                 "Access-Control-Allow-Origin": "*"  # 画面から呼ぶために必要
             },
-            "isBase64Encoded": True,
             "body": base64.b64encode(compressed).decode('ascii')
         }
     except Exception as e:

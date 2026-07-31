@@ -17,11 +17,11 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
-      # SearchFunctionがLambda応答の同期呼び出し上限(6MB)を超えないよう、
-      # レスポンスをgzip圧縮してBase64で返す。API Gateway側でバイナリとして
-      # デコード・パススルーさせるためにBinaryMediaTypesの指定が必要。
-      BinaryMediaTypes:
-        - "*/*"
+      # 注意: BinaryMediaTypesは設定しないこと。過去に設定したところ、
+      # CORSプリフライト(OPTIONSのMock統合)の応答まで巻き込まれて500エラーになった
+      # （"*/*"はもちろん、"application/gzip"のみに絞ってもOPTIONSは直らなかった）。
+      # そのためSearchFunctionのgzip圧縮はAPI Gateway経由のバイナリ変換に頼らず、
+      # base64文字列としてそのまま返しフロント側で展開する方式にしている。
       Cors:
         # AllowOriginは現時点ではVercelドメイン未確定のため暫定的に全許可。
         # デプロイ後、実際のVercelドメインに絞り込むこと。
