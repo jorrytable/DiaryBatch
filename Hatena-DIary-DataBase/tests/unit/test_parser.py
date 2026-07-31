@@ -113,6 +113,20 @@ def test_tv_program_with_multiple_episodes_converts_nakaguro_to_newlines():
     )
 
 
+def test_tv_program_keeps_nakaguro_inside_quoted_subtitle():
+    # 「」内の「・」は改行にせず、そのまま残す
+    content = (
+        "*** 今日見たもの\n"
+        "- TBSテレビ『[https://www.tbs.co.jp/example_tbs/:title=サンプル番組]』"
+        "第1話「サスペンス・ホラー編」・第2話「コメディ編」"
+        "[https://www.tbs.co.jp/example_tbs/:embed]"
+    )
+    results = parse_html_content(content, "2026-01-05")
+
+    assert len(results) == 1
+    assert results[0]['subtitle'] == "第1話「サスペンス・ホラー編」\n第2話「コメディ編」"
+
+
 def test_non_tv_item_has_empty_subtitle():
     content = "*** 今日見たもの\n- [https://www.youtube.com/watch?v=x:title=何かの動画]\n-- 良かった"
     results = parse_html_content(content, "2026-01-05")
