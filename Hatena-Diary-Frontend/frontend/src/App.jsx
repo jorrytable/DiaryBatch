@@ -50,7 +50,7 @@ function EmbedPreview({ item }) {
   if (item.embed_html) {
     return (
       <div
-        className="mb-3 [&_iframe]:w-full [&_iframe]:aspect-video"
+        className="mb-3 [&_iframe]:w-full [&_iframe]:h-auto [&_iframe]:aspect-video"
         dangerouslySetInnerHTML={{ __html: withLazyLoading(item.embed_html) }}
       />
     )
