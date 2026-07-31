@@ -33,11 +33,9 @@ def parse_html_content(content_text: str,
                 if current_item:
                     results.append(current_item)
 
-                # リンクとタイトルを抽出 [URL:title] または [URL] の形式
-                # 正規表現でURLとタイトル部分を抜き出す
-                url_match = re.search(r'\[(https?://[^\s\]]+):title\]', line)
-                if not url_match:
-                    url_match = re.search(r'\[(https?://[^\s\]]+)\]', line)
+                # リンクとタイトルを抽出。[URL] / [URL:title] / [URL:title=カスタムタイトル] のいずれの形式にも対応する。
+                # URL部分は非貪欲マッチにして、":title"以降をURLに巻き込まないようにする。
+                url_match = re.search(r'\[(https?://[^\s\]]+?)(?::title(?:=([^\]]*))?)?\]', line)
 
                 # URLが無くても「- 映画『』」「- TVアニメ『』」等の記法ならアイテムとして採用する
                 content_rule = classify_from_content(line)
@@ -45,9 +43,8 @@ def parse_html_content(content_text: str,
                 if url_match or content_rule:
                     if url_match:
                         url = url_match.group(1)
-                        # タイトル部分（:titleがあれば取得、なければNone＝後段でページタイトルを取得する必要ありのマーカー）
-                        title_match = re.search(r':title=([^\]]+)\]', line)
-                        title = title_match.group(1) if title_match else None
+                        # カスタムタイトル（:title=）があれば取得、なければNone＝後段でページタイトルを取得する必要ありのマーカー
+                        title = url_match.group(2)
                         genre, tags = classify_genre_and_tags(url)
                     else:
                         url = ""
