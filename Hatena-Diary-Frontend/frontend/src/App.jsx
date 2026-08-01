@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 
 const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'ラジオ', 'その他']
 
@@ -123,7 +123,7 @@ function embedPlaceholderClassName(item) {
   return "mb-3 h-28 bg-gray-100 rounded animate-pulse"
 }
 
-function PaginationControls({ page, totalPages, onPrev, onNext }) {
+const PaginationControls = memo(function PaginationControls({ page, totalPages, onPrev, onNext }) {
   return (
     <div className="flex items-center justify-center gap-4 text-sm text-gray-600">
       <button
@@ -145,7 +145,103 @@ function PaginationControls({ page, totalPages, onPrev, onNext }) {
       </button>
     </div>
   )
-}
+})
+
+// レビュー1件分のカード。React.memoで包み、propsのitemが同じオブジェクト参照のままなら
+// （検索欄の操作等、無関係なApp()の状態変化では）再描画・差分計算そのものをスキップする。
+// これにより、フォーカスの移動や入力操作のたびに埋め込み（iframe）が不必要に
+// Reactの差分計算に巻き込まれてちらつく／再読み込みされることを防ぐ。
+const ReviewCard = memo(function ReviewCard({ item }) {
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
+      <div className="flex justify-between items-start mb-2">
+        <span className="text-sm text-blue-600 font-mono">{item.review_date}</span>
+        <div className="flex flex-wrap gap-1 justify-end">
+          <span className={`${genreBadgeClassName(item.genre)} text-xs px-2 py-1 rounded`}>{item.genre}</span>
+          {item.tags?.map((tag) => (
+            <span key={tag} className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded">{tag}</span>
+          ))}
+        </div>
+      </div>
+      {item.links ? (
+        <div className="mb-3 space-y-1">
+          {item.links.map((link, i) => (
+            <div key={i}>
+              <h2 className="text-xl font-bold text-gray-900">
+                {link.url ? (
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
+                    {link.title}
+                  </a>
+                ) : (
+                  link.title
+                )}
+              </h2>
+              {link.subtitle && (
+                <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{link.subtitle}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mb-3">
+          <h2 className="text-xl font-bold text-gray-900">
+            {item.url ? (
+              <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
+                {item.title}
+              </a>
+            ) : (
+              item.title
+            )}
+          </h2>
+          {item.subtitle && (
+            <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{item.subtitle}</p>
+          )}
+        </div>
+      )}
+      {item.links ? (
+        item.links.map((link, i) => (
+          hasEmbeddableContent(link) ? (
+            <LazyMount key={i} placeholderClassName={embedPlaceholderClassName(link)}>
+              <EmbedPreview item={link} />
+            </LazyMount>
+          ) : null
+        ))
+      ) : (
+        hasEmbeddableContent(item) && (
+          <LazyMount placeholderClassName={embedPlaceholderClassName(item)}>
+            <EmbedPreview item={item} />
+          </LazyMount>
+        )
+      )}
+      <div className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
+        {item.impression_segments ? (
+          item.impression_segments.map((seg, i) => {
+            if (seg.type === 'link') {
+              return (
+                <a key={i} href={seg.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                  {seg.title}
+                </a>
+              )
+            }
+            if (seg.type === 'embed') {
+              return hasEmbeddableContent(seg) ? (
+                <LazyMount key={i} placeholderClassName={embedPlaceholderClassName(seg)}>
+                  <EmbedPreview item={seg} />
+                </LazyMount>
+              ) : null
+            }
+            // type: 'text'。ブログ本文中の<b>等のHTMLタグをそのまま反映するため
+            // エスケープせずHTMLとして描画する（自分のブログの自作コンテンツのみが
+            // 対象で、embed_html同様の信頼範囲のため許容している）
+            return <span key={i} dangerouslySetInnerHTML={{ __html: seg.text }} />
+          })
+        ) : (
+          <span dangerouslySetInnerHTML={{ __html: item.impression }} />
+        )}
+      </div>
+    </div>
+  )
+})
 
 const PAGE_SIZE = 50
 
@@ -504,93 +600,7 @@ function App() {
 
         <div className="space-y-6">
           {pagedReviews.map((item) => (
-            <div key={item.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-sm text-blue-600 font-mono">{item.review_date}</span>
-                <div className="flex flex-wrap gap-1 justify-end">
-                  <span className={`${genreBadgeClassName(item.genre)} text-xs px-2 py-1 rounded`}>{item.genre}</span>
-                  {item.tags?.map((tag) => (
-                    <span key={tag} className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded">{tag}</span>
-                  ))}
-                </div>
-              </div>
-              {item.links ? (
-                <div className="mb-3 space-y-1">
-                  {item.links.map((link, i) => (
-                    <div key={i}>
-                      <h2 className="text-xl font-bold text-gray-900">
-                        {link.url ? (
-                          <a href={link.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
-                            {link.title}
-                          </a>
-                        ) : (
-                          link.title
-                        )}
-                      </h2>
-                      {link.subtitle && (
-                        <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{link.subtitle}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mb-3">
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {item.url ? (
-                      <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 underline">
-                        {item.title}
-                      </a>
-                    ) : (
-                      item.title
-                    )}
-                  </h2>
-                  {item.subtitle && (
-                    <p className="text-sm text-gray-500 mt-1 whitespace-pre-wrap">{item.subtitle}</p>
-                  )}
-                </div>
-              )}
-              {item.links ? (
-                item.links.map((link, i) => (
-                  hasEmbeddableContent(link) ? (
-                    <LazyMount key={i} placeholderClassName={embedPlaceholderClassName(link)}>
-                      <EmbedPreview item={link} />
-                    </LazyMount>
-                  ) : null
-                ))
-              ) : (
-                hasEmbeddableContent(item) && (
-                  <LazyMount placeholderClassName={embedPlaceholderClassName(item)}>
-                    <EmbedPreview item={item} />
-                  </LazyMount>
-                )
-              )}
-              <div className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-4 rounded border-l-4 border-gray-200">
-                {item.impression_segments ? (
-                  item.impression_segments.map((seg, i) => {
-                    if (seg.type === 'link') {
-                      return (
-                        <a key={i} href={seg.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                          {seg.title}
-                        </a>
-                      )
-                    }
-                    if (seg.type === 'embed') {
-                      return hasEmbeddableContent(seg) ? (
-                        <LazyMount key={i} placeholderClassName={embedPlaceholderClassName(seg)}>
-                          <EmbedPreview item={seg} />
-                        </LazyMount>
-                      ) : null
-                    }
-                    // type: 'text'。ブログ本文中の<b>等のHTMLタグをそのまま反映するため
-                    // エスケープせずHTMLとして描画する（自分のブログの自作コンテンツのみが
-                    // 対象で、embed_html同様の信頼範囲のため許容している）
-                    return <span key={i} dangerouslySetInnerHTML={{ __html: seg.text }} />
-                  })
-                ) : (
-                  <span dangerouslySetInnerHTML={{ __html: item.impression }} />
-                )}
-              </div>
-            </div>
+            <ReviewCard key={item.id} item={item} />
           ))}
         </div>
 
