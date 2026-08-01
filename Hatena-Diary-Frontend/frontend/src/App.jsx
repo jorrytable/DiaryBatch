@@ -170,13 +170,12 @@ function App() {
   const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
-  // タグ専用検索欄の状態。tagInputは表示値（IME変換中含む）、tagQueryは候補計算に使う確定値、
+  // タグ専用検索欄の状態。tagInputは表示値、tagQueryはEnter押下時に確定する候補計算用の値、
   // selectedTagは実際に一覧を絞り込むタグ（候補をクリックした時だけセットされる）。
   const [tagInput, setTagInput] = useState('')
   const [tagQuery, setTagQuery] = useState('')
   const [selectedTag, setSelectedTag] = useState('')
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
-  const isTagComposingRef = useRef(false)
 
   const toggleGenre = (genre) => {
     setSelectedGenres((prev) =>
@@ -185,21 +184,22 @@ function App() {
     setCurrentPage(1)
   }
 
+  // 入力中は表示値のみ更新し、候補計算（tagQuery更新）はEnter押下時にのみ行う。
+  // 1文字ごとにtagQueryを更新すると、そのたびに候補計算（全レビューのtagsを走査）が
+  // 走ってしまい入力のたびに画面が重くなっていたための対応。
   const handleTagInputChange = (e) => {
     const value = e.target.value
     setTagInput(value)
     if (selectedTag !== '') setSelectedTag('')
-    if (!isTagComposingRef.current) {
-      setTagQuery(value)
-      setTagDropdownOpen(value !== '')
-    }
+    setTagDropdownOpen(false)
   }
 
-  const handleTagCompositionEnd = (e) => {
-    isTagComposingRef.current = false
-    const value = e.target.value
-    setTagQuery(value)
-    setTagDropdownOpen(value !== '')
+  const handleTagInputKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      setTagQuery(tagInput)
+      setTagDropdownOpen(tagInput !== '')
+    }
   }
 
   const selectTagCandidate = (tag) => {
@@ -370,17 +370,14 @@ function App() {
                   type="text"
                   value={tagInput}
                   onChange={handleTagInputChange}
-                  onCompositionStart={() => {
-                    isTagComposingRef.current = true
-                  }}
-                  onCompositionEnd={handleTagCompositionEnd}
+                  onKeyDown={handleTagInputKeyDown}
                   onFocus={() => {
                     if (tagQuery !== '') setTagDropdownOpen(true)
                   }}
                   onBlur={() => {
                     setTimeout(() => setTagDropdownOpen(false), 150)
                   }}
-                  placeholder="タグで検索"
+                  placeholder="タグで検索（Enterで実行）"
                   className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {(tagInput !== '' || selectedTag !== '') && (
