@@ -158,58 +158,66 @@ function App() {
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(false)
 
-  // 検索・フィルタ用の状態
-  // searchInputは検索ボックスの表示値（IME変換中の未確定文字列も含む）、
-  // searchTextはフィルタ判定に使う確定値。IME変換中はsearchTextを更新しないことで、
-  // 変換確定前の文字列で一覧が何度もちらつくのを防ぐ。
+  // 検索・フィルタ用の状態。
+  // 「下書き」（入力欄の表示専用、操作しても一覧には即座に反映されない）と
+  // 「適用済み」（実際に一覧の絞り込みに使われる、検索実行時にのみ更新される）を分離している。
+  // 統合検索: searchInput(下書き) / searchText(適用済み)
+  // ジャンル : draftGenres(下書き) / selectedGenres(適用済み)
+  // 登録日  : draftDateFrom/draftDateTo(下書き) / dateFrom/dateTo(適用済み)
   const [searchInput, setSearchInput] = useState('')
   const [searchText, setSearchText] = useState('')
-  const isComposingRef = useRef(false)
   const [selectedGenres, setSelectedGenres] = useState([])
+  const [draftGenres, setDraftGenres] = useState([])
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [draftDateFrom, setDraftDateFrom] = useState('')
+  const [draftDateTo, setDraftDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
-  // タグ専用検索欄の状態。tagInputは表示値、tagQueryはEnter押下時に確定する候補計算用の値、
-  // selectedTagは実際に一覧を絞り込むタグ（候補をクリックした時だけセットされる）。
+  // タグ専用検索欄の状態。tagInputは表示値（IME変換中含む）、tagQueryは候補計算に使う確定値、
+  // selectedTagは実際に一覧を絞り込むタグ（適用済み。検索実行時にtagInputの値が反映される）。
   const [tagInput, setTagInput] = useState('')
   const [tagQuery, setTagQuery] = useState('')
   const [selectedTag, setSelectedTag] = useState('')
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+  const isTagComposingRef = useRef(false)
 
+  // ジャンルのチェックは見た目（draftGenres）だけを切り替える。実際の絞り込みへの反映は
+  // 検索ボタン押下時（executeSearch）にまとめて行うため、ここではcurrentPageも変更しない。
   const toggleGenre = (genre) => {
-    setSelectedGenres((prev) =>
+    setDraftGenres((prev) =>
       prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
     )
-    setCurrentPage(1)
   }
 
-  // 入力中は表示値のみ更新し、候補計算（tagQuery更新）はEnter押下時にのみ行う。
-  // 1文字ごとにtagQueryを更新すると、そのたびに候補計算（全レビューのtagsを走査）が
-  // 走ってしまい入力のたびに画面が重くなっていたための対応。
+  // タグ欄の入力候補は、一覧の絞り込みとは別の軽い処理（登録済みタグを数えるだけ）のため、
+  // 従来通りIME確定時（および英数字等の通常入力時）に都度計算して表示する。
   const handleTagInputChange = (e) => {
     const value = e.target.value
     setTagInput(value)
-    if (selectedTag !== '') setSelectedTag('')
-    setTagDropdownOpen(false)
-  }
-
-  const handleTagInputKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      setTagQuery(tagInput)
-      setTagDropdownOpen(tagInput !== '')
+    if (!isTagComposingRef.current) {
+      setTagQuery(value)
+      setTagDropdownOpen(value !== '')
     }
   }
 
+  const handleTagCompositionEnd = (e) => {
+    isTagComposingRef.current = false
+    const value = e.target.value
+    setTagQuery(value)
+    setTagDropdownOpen(value !== '')
+  }
+
+  // 候補をクリックしても欄に入力されるだけで、一覧への反映（絞り込み実行）は行わない。
+  // 実際に絞り込むには検索ボタンを押す（または統合検索欄でEnterを押す）必要がある。
   const selectTagCandidate = (tag) => {
     setTagInput(tag)
     setTagQuery(tag)
-    setSelectedTag(tag)
     setTagDropdownOpen(false)
-    setCurrentPage(1)
   }
 
+  // ✕ボタンでのクリアは「その場でフィルタを取り消す」明示的な操作のため、
+  // 下書き・適用済み両方を即座にリセットし、検索ボタンを押さなくても反映する。
   const clearTagFilter = () => {
     setTagInput('')
     setTagQuery('')
@@ -233,14 +241,37 @@ function App() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([tag]) => tag)
   })()
 
-  const hasActiveFilters = searchInput !== '' || selectedGenres.length > 0 || dateFrom !== '' || dateTo !== '' || selectedTag !== ''
+  // 「検索」ボタン（または統合検索欄でのEnter）を押した時にのみ、下書きの内容を
+  // まとめて適用済みstateへ反映する。これにより、複数条件を組み立てている最中は
+  // 一覧の絞り込み直し（重い処理）が一切走らない。
+  const executeSearch = () => {
+    setSearchText(searchInput)
+    setSelectedTag(tagInput)
+    setSelectedGenres(draftGenres)
+    setDateFrom(draftDateFrom)
+    setDateTo(draftDateTo)
+    setCurrentPage(1)
+  }
+
+  const handleSearchInputKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      executeSearch()
+    }
+  }
+
+  // クリア判定・全クリアは実行済み（適用済み）の検索条件を基準にする
+  const hasActiveFilters = searchText !== '' || selectedGenres.length > 0 || dateFrom !== '' || dateTo !== '' || selectedTag !== ''
 
   const clearAllFilters = () => {
     setSearchInput('')
     setSearchText('')
     setSelectedGenres([])
+    setDraftGenres([])
     setDateFrom('')
     setDateTo('')
+    setDraftDateFrom('')
+    setDraftDateTo('')
     setTagInput('')
     setTagQuery('')
     setSelectedTag('')
@@ -331,22 +362,9 @@ function App() {
                 <input
                   type="text"
                   value={searchInput}
-                  onChange={(e) => {
-                    setSearchInput(e.target.value)
-                    if (!isComposingRef.current) {
-                      setSearchText(e.target.value)
-                      setCurrentPage(1)
-                    }
-                  }}
-                  onCompositionStart={() => {
-                    isComposingRef.current = true
-                  }}
-                  onCompositionEnd={(e) => {
-                    isComposingRef.current = false
-                    setSearchText(e.target.value)
-                    setCurrentPage(1)
-                  }}
-                  placeholder="タイトル・感想で検索"
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={handleSearchInputKeyDown}
+                  placeholder="タイトル・感想で検索（Enterで実行）"
                   className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {searchInput !== '' && (
@@ -370,14 +388,17 @@ function App() {
                   type="text"
                   value={tagInput}
                   onChange={handleTagInputChange}
-                  onKeyDown={handleTagInputKeyDown}
+                  onCompositionStart={() => {
+                    isTagComposingRef.current = true
+                  }}
+                  onCompositionEnd={handleTagCompositionEnd}
                   onFocus={() => {
                     if (tagQuery !== '') setTagDropdownOpen(true)
                   }}
                   onBlur={() => {
                     setTimeout(() => setTagDropdownOpen(false), 150)
                   }}
-                  placeholder="タグで検索（Enterで実行）"
+                  placeholder="タグで検索"
                   className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 {(tagInput !== '' || selectedTag !== '') && (
@@ -413,7 +434,7 @@ function App() {
                 <label key={genre} className="flex items-center gap-1 text-sm text-gray-700">
                   <input
                     type="checkbox"
-                    checked={selectedGenres.includes(genre)}
+                    checked={draftGenres.includes(genre)}
                     onChange={() => toggleGenre(genre)}
                   />
                   {genre}
@@ -426,24 +447,28 @@ function App() {
                 登録日
                 <input
                   type="date"
-                  value={dateFrom}
-                  onChange={(e) => {
-                    setDateFrom(e.target.value)
-                    setCurrentPage(1)
-                  }}
+                  value={draftDateFrom}
+                  onChange={(e) => setDraftDateFrom(e.target.value)}
                   className="border border-gray-300 rounded p-1"
                 />
               </label>
               〜
               <input
                 type="date"
-                value={dateTo}
-                onChange={(e) => {
-                  setDateTo(e.target.value)
-                  setCurrentPage(1)
-                }}
+                value={draftDateTo}
+                onChange={(e) => setDraftDateTo(e.target.value)}
                 className="border border-gray-300 rounded p-1"
               />
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={executeSearch}
+                className="bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded hover:bg-blue-700 transition"
+              >
+                検索
+              </button>
             </div>
 
             <div className="flex items-center justify-between">
