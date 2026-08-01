@@ -451,10 +451,13 @@ function App() {
                         </LazyMount>
                       ) : null
                     }
-                    return seg.text
+                    // type: 'text'。ブログ本文中の<b>等のHTMLタグをそのまま反映するため
+                    // エスケープせずHTMLとして描画する（自分のブログの自作コンテンツのみが
+                    // 対象で、embed_html同様の信頼範囲のため許容している）
+                    return <span key={i} dangerouslySetInnerHTML={{ __html: seg.text }} />
                   })
                 ) : (
-                  item.impression
+                  <span dangerouslySetInnerHTML={{ __html: item.impression }} />
                 )}
               </div>
             </div>
