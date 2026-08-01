@@ -162,6 +162,17 @@ function App() {
     setCurrentPage(1)
   }
 
+  const hasActiveFilters = searchInput !== '' || selectedGenres.length > 0 || dateFrom !== '' || dateTo !== ''
+
+  const clearAllFilters = () => {
+    setSearchInput('')
+    setSearchText('')
+    setSelectedGenres([])
+    setDateFrom('')
+    setDateTo('')
+    setCurrentPage(1)
+  }
+
   const filteredReviews = reviews.filter((item) => {
     const matchesGenre = selectedGenres.length === 0 || selectedGenres.includes(item.genre)
     const searchTarget = `${item.title}${item.impression}${(item.tags || []).join(' ')}`.toLowerCase()
@@ -316,9 +327,20 @@ function App() {
             </div>
 
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">
-                {filteredReviews.length}件 / 全{reviews.length}件
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-gray-500">
+                  {filteredReviews.length}件 / 全{reviews.length}件
+                </p>
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    条件をすべてクリア
+                  </button>
+                )}
+              </div>
               {totalPages > 1 && (
                 <PaginationControls
                   page={currentPageSafe}
