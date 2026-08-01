@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'ラジオ', 'その他']
 
@@ -151,15 +151,28 @@ const PaginationControls = memo(function PaginationControls({ page, totalPages, 
 // （検索欄の操作等、無関係なApp()の状態変化では）再描画・差分計算そのものをスキップする。
 // これにより、フォーカスの移動や入力操作のたびに埋め込み（iframe）が不必要に
 // Reactの差分計算に巻き込まれてちらつく／再読み込みされることを防ぐ。
-const ReviewCard = memo(function ReviewCard({ item }) {
+const ReviewCard = memo(function ReviewCard({ item, onGenreClick, onTagClick }) {
   return (
     <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition">
       <div className="flex justify-between items-start mb-2">
         <span className="text-sm text-blue-600 font-mono">{item.review_date}</span>
         <div className="flex flex-wrap gap-1 justify-end">
-          <span className={`${genreBadgeClassName(item.genre)} text-xs px-2 py-1 rounded`}>{item.genre}</span>
+          <button
+            type="button"
+            onClick={() => onGenreClick(item.genre)}
+            className={`${genreBadgeClassName(item.genre)} text-xs px-2 py-1 rounded hover:opacity-75 transition`}
+          >
+            {item.genre}
+          </button>
           {item.tags?.map((tag) => (
-            <span key={tag} className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded">{tag}</span>
+            <button
+              key={tag}
+              type="button"
+              onClick={() => onTagClick(tag)}
+              className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded hover:opacity-75 transition"
+            >
+              {tag}
+            </button>
           ))}
         </div>
       </div>
@@ -348,6 +361,23 @@ function App() {
     setDateTo(draftDateTo)
     setCurrentPage(1)
   }
+
+  // カード上のジャンル/タグバッジをクリックした時は、検索ボタンを介さず即座に
+  // その属性1つだけで絞り込む（✕クリア等と同様の明示的な即時操作として扱う）。
+  // useCallbackで関数参照を固定し、ReviewCard（React.memo）への再描画波及を防ぐ。
+  const filterByGenre = useCallback((genre) => {
+    setDraftGenres([genre])
+    setSelectedGenres([genre])
+    setCurrentPage(1)
+  }, [])
+
+  const filterByTag = useCallback((tag) => {
+    setTagInput(tag)
+    setTagQuery(tag)
+    setSelectedTag(tag)
+    setTagDropdownOpen(false)
+    setCurrentPage(1)
+  }, [])
 
   const handleSearchInputKeyDown = (e) => {
     if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
@@ -600,7 +630,7 @@ function App() {
 
         <div className="space-y-6">
           {pagedReviews.map((item) => (
-            <ReviewCard key={item.id} item={item} />
+            <ReviewCard key={item.id} item={item} onGenreClick={filterByGenre} onTagClick={filterByTag} />
           ))}
         </div>
 
