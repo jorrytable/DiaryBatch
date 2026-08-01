@@ -202,7 +202,16 @@ MSYS_NO_PATHCONV=1 aws ssm put-parameter --name "/hatena-site/access-token" --va
 ---
 
 ## 6. 未着手の今後の課題
-（2026-08-01時点でなし。全ての既知の課題は完了済み、または対応不要と判断されクローズ済み）
 
-### 6.1 対応不要と判断してクローズした項目
+### 6.1 リファクタリング四観点レビュー（reuse/simplification/efficiency/altitude）で見送った項目（2026-08-02）
+全ソース（バックエンド`src/backend`・フロントエンド`frontend/src`）に対し4観点で並列レビューを実施し、「安全な項目（挙動を変えないコード品質改善）」のみを実施済み（`ReviewItem`死んだコード削除、ドメイン判定/DynamoDBページネーション/タグマージ/item生成の共通化、`get_or_fetch`戻り値明示化、`authorizer.py`のSSMキャッシュ、未使用`App.css`削除、`filteredReviews`/`tagCandidates`のuseMemo化、ページ送りのuseCallback化）。以下は規模・リスクの都合で見送り、着手時は改めて方針レビューが必要:
+- **単一URL/`links`配列の二重データ構造の統合**: `parser.py`/`batch/app.py`/`App.jsx`の3箇所で「1件 vs 複数リンク」の分岐が並行して存在し、重複コードの根本原因になっている。`links`配列に統一すれば解消するが、データモデル変更のため既存テスト(`test_parser.py`)の書き直しを伴う。
+- **バッチジョブの差分同期化**: `batch/app.py`が毎回Atomフィード全履歴を再取得・再パースし、DynamoDBも毎回全件削除→全件書き込みしている。差分方式にすればLambda実行時間・書き込みコストを削減できるが、挙動変更を伴うアーキテクチャ変更のため別途相談。
+- **oEmbed取得のThreadPoolExecutorによる並列化**: `batch/enrich.py`の未キャッシュURL取得（最大200件）が逐次実行になっている。並列化で実行時間を短縮できるが、外部サービスへのレート制限リスクを考慮した設計が必要。
+- **`enrich.py`内のYouTube専用ロジックの汎用フック化**: `_fetch_oembed`が汎用関数のはずが`YOUTUBE_HOSTS`分岐を内包している。ドメインごとの後処理フックのテーブル化が望ましいが、優先度は低い。
+- **フロントエンド`isVideoEmbed`のバックエンド重複**: `App.jsx`がYouTubeドメイン判定をsubstringで独自実装しており、`classify.py`/`enrich.py`のドメイン知識と3重管理になっている。バックエンドが埋め込み種別をデータとして渡す設計に直せば解消するが、バックエンド側の変更を伴う。
+- **`classify.py`のSpotifyパス別分岐の一般化**: 現状Spotifyの1ケースのみのため、テーブル駆動化は時期尚早と判断し見送り推奨。
+- **`parser.py`の`_extract_subtitle`の宣言的書き換え**: 逐次的な文字列加工の積み重ねになっているが、コアなパース処理でリグレッションリスクがあるため見送り推奨。
+
+### 6.2 対応不要と判断してクローズした項目
 - **titleに混入するサービス名接尾辞**: Amazon Prime Videoの`:title=`値が`カルテット | Amazon Prime Video`のようにサービス名接尾辞込みでそのまま入る件。ユーザーが「その記述をそのまま生かす」として対応不要と判断。表示title文字列のみへの影響（対象はAmazon Prime Videoの案件のみ）で、セキュリティ・データ整合性・他機能への影響はなく、深刻なリスクは無いと判断。
