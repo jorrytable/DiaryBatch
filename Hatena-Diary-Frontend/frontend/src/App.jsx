@@ -341,14 +341,12 @@ function App() {
                   </button>
                 )}
               </div>
-              {totalPages > 1 && (
-                <PaginationControls
-                  page={currentPageSafe}
-                  totalPages={totalPages}
-                  onPrev={goToPrevPage}
-                  onNext={goToNextPage}
-                />
-              )}
+              <PaginationControls
+                page={currentPageSafe}
+                totalPages={totalPages}
+                onPrev={goToPrevPage}
+                onNext={goToNextPage}
+              />
             </div>
           </div>
         </div>
