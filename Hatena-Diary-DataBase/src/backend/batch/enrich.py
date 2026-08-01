@@ -5,7 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 from boto3.dynamodb.types import TypeDeserializer
 
-from common.urls import hostname as _hostname
+from common.urls import hostname as _hostname, match_domain
 
 # oEmbed対応ドメイン→エンドポイントURL。網羅的ではなく、確認済みのものから随時追記していく前提の初期値
 OEMBED_ENDPOINTS = {
@@ -23,13 +23,7 @@ _deserializer = TypeDeserializer()
 
 
 def _find_oembed_endpoint(url: str) -> str | None:
-    hostname = _hostname(url)
-    if hostname in OEMBED_ENDPOINTS:
-        return OEMBED_ENDPOINTS[hostname]
-    for domain, endpoint in OEMBED_ENDPOINTS.items():
-        if hostname.endswith('.' + domain):
-            return endpoint
-    return None
+    return match_domain(OEMBED_ENDPOINTS, _hostname(url))
 
 
 def _extract_youtube_video_id(url: str) -> str | None:
@@ -139,13 +133,14 @@ def batch_get_cached(dynamodb_client, table_name: str, urls: list) -> dict:
     return cached
 
 
-def get_or_fetch(table, url: str, cached: dict, budget: dict, youtube_api_key: str | None = None) -> dict:
-    """事前取得済みキャッシュ(cached)にあればそれを使い、無ければ予算が残っていれば取得してキャッシュする。"""
+def get_or_fetch(table, url: str, cached: dict, budget: dict, youtube_api_key: str | None = None) -> tuple[dict, bool]:
+    """事前取得済みキャッシュ(cached)にあればそれを使い、無ければ予算が残っていれば取得してキャッシュする。
+    戻り値は(メタデータ, 新規取得したかどうか)。"""
     if url in cached:
-        return cached[url]
+        return cached[url], False
 
     if budget['remaining'] <= 0:
-        return {}
+        return {}, False
 
     metadata = fetch_metadata(url, youtube_api_key)
     budget['remaining'] -= 1
@@ -153,4 +148,4 @@ def get_or_fetch(table, url: str, cached: dict, budget: dict, youtube_api_key: s
     item = {'url': url, 'fetched_at': datetime.datetime.utcnow().isoformat(), **metadata}
     table.put_item(Item=item)
     cached[url] = item
-    return item
+    return item, True

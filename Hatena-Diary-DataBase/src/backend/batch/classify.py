@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 
-from common.urls import hostname as _hostname
+from common.urls import hostname as _hostname, match_domain
 
 # ドメイン(ホスト名)→(genre, tags)の対応表。網羅的ではなく随時追記していく前提の初期値
 DOMAIN_RULES = {
@@ -84,13 +84,10 @@ def classify_genre_and_tags(url: str) -> tuple:
         if path.startswith('/episode/') or path.startswith('/show/'):
             return 'ラジオ', []
 
-    if host in DOMAIN_RULES:
-        genre, tags = DOMAIN_RULES[host]
+    match = match_domain(DOMAIN_RULES, host)
+    if match:
+        genre, tags = match
         return genre, list(tags)
-
-    for domain, (genre, tags) in DOMAIN_RULES.items():
-        if host.endswith('.' + domain):
-            return genre, list(tags)
 
     return 'その他', []
 

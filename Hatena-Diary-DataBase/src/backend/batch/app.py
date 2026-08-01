@@ -4,7 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from batch.parser import parse_html_content, flatten_impression_segments
 from batch.enrich import batch_get_cached, get_or_fetch
-from common.models import ReviewItem
+from common.dynamo import paginate
 
 # 設定の取得
 SSM_PARAM_NAME = os.environ.get('SSM_PARAM_NAME', '/hatena-batch/api_key')
@@ -89,9 +89,8 @@ def lambda_handler(event: any, context: any) -> str:
 
     def enrich_one(target: dict, url: str):
         nonlocal newly_fetched
-        before = budget['remaining']
-        metadata = get_or_fetch(cache_table, url, cached, budget, youtube_api_key)
-        if budget['remaining'] < before:
+        metadata, did_fetch = get_or_fetch(cache_table, url, cached, budget, youtube_api_key)
+        if did_fetch:
             newly_fetched += 1
 
         if target['title'] is None:
@@ -100,6 +99,17 @@ def lambda_handler(event: any, context: any) -> str:
             if metadata.get(key):
                 target[key] = metadata[key]
         return metadata
+
+    def apply_metadata(rev: dict, metadata: dict) -> None:
+        """メタデータ取得結果のtags/is_musicを、レビューのtags/genreに反映する。"""
+        if metadata.get('tags'):
+            existing_tags = rev.get('tags', [])
+            for tag in metadata['tags']:
+                if tag not in existing_tags:
+                    existing_tags.append(tag)
+            rev['tags'] = existing_tags
+        if metadata.get('is_music'):
+            rev['genre'] = '音楽'
 
     # 感想本文中のインラインリンク・埋め込みマーカーを先にエンリッチする。
     # メインコンテンツ側は過去の大量履歴の遡及取得を伴い予算を使い切りがちなため、
@@ -119,12 +129,7 @@ def lambda_handler(event: any, context: any) -> str:
             # 1行複数リンクのアイテム：各リンクを個別にエンリッチし、titleは代表して結合する
             for link in rev['links']:
                 metadata = enrich_one(link, link['url'])
-                if metadata.get('tags'):
-                    for tag in metadata['tags']:
-                        if tag not in rev['tags']:
-                            rev['tags'].append(tag)
-                if metadata.get('is_music'):
-                    rev['genre'] = '音楽'
+                apply_metadata(rev, metadata)
             rev['title'] = " / ".join(link['title'] for link in rev['links'] if link.get('title')) or None
             continue
 
@@ -133,14 +138,7 @@ def lambda_handler(event: any, context: any) -> str:
             continue
 
         metadata = enrich_one(rev, rev['url'])
-        if metadata.get('tags'):
-            existing_tags = rev.get('tags', [])
-            for tag in metadata['tags']:
-                if tag not in existing_tags:
-                    existing_tags.append(tag)
-            rev['tags'] = existing_tags
-        if metadata.get('is_music'):
-            rev['genre'] = '音楽'
+        apply_metadata(rev, metadata)
 
     print(f"URLメタデータ：新規取得{newly_fetched}件（予算{ENRICH_BUDGET}件中）")
 
@@ -148,15 +146,9 @@ def lambda_handler(event: any, context: any) -> str:
     table = dynamodb.Table(TABLE_NAME)
     deleted_count = 0
     with table.batch_writer() as batch:
-        scan_kwargs = {"ProjectionExpression": "id"}
-        while True:
-            resp = table.scan(**scan_kwargs)
-            for item in resp["Items"]:
-                batch.delete_item(Key={"id": item["id"]})
-                deleted_count += 1
-            if "LastEvaluatedKey" not in resp:
-                break
-            scan_kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+        for item in paginate(table.scan, ProjectionExpression="id"):
+            batch.delete_item(Key={"id": item["id"]})
+            deleted_count += 1
     print(f"既存データを{deleted_count}件削除しました")
 
     # 6. 新データを全件書き込み

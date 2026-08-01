@@ -5,6 +5,8 @@ import gzip
 import base64
 from boto3.dynamodb.conditions import Key
 
+from common.dynamo import paginate
+
 # 設定
 TABLE_NAME = os.environ.get('REVIEW_TABLE_NAME', 'HatenaBlogReviews')
 dynamodb = boto3.resource('dynamodb')
@@ -18,18 +20,12 @@ def lambda_handler(event, context):
         # FeedIndex（data_type固定値 + review_dateソートキー）に対してQueryし、
         # DynamoDB側で日付降順ソート済みの全件を取得する。
         # 1回のQuery応答は1MBまでのため、LastEvaluatedKeyがある間は続けて取得する
-        items = []
-        query_kwargs = {
-            "IndexName": "FeedIndex",
-            "KeyConditionExpression": Key("data_type").eq("review"),
-            "ScanIndexForward": False,
-        }
-        while True:
-            response = table.query(**query_kwargs)
-            items.extend(response.get("Items", []))
-            if "LastEvaluatedKey" not in response:
-                break
-            query_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+        items = list(paginate(
+            table.query,
+            IndexName="FeedIndex",
+            KeyConditionExpression=Key("data_type").eq("review"),
+            ScanIndexForward=False,
+        ))
 
         # Lambdaの同期呼び出し応答は6MBまでという上限があり、embed_html/OGP情報等の
         # 増加でJSONが年々肥大化しているため、gzip圧縮してBase64文字列として返す。

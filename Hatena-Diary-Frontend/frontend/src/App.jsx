@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'ラジオ', 'その他']
 
@@ -325,18 +325,20 @@ function App() {
     setTagDropdownOpen(false)
   }
 
-  // ✕ボタンでのクリアは「その場でフィルタを取り消す」明示的な操作のため、
-  // 下書き・適用済み両方を即座にリセットし、検索ボタンを押さなくても反映する。
-  const clearTagFilter = () => {
-    setTagInput('')
-    setTagQuery('')
-    setSelectedTag('')
+  // タグ絞り込み（下書き・適用済み両方）をまとめて指定の値にする。空文字を渡せばクリアになる。
+  // カード上のタグバッジクリック、✕ボタンでのクリアの両方から使う共通処理。
+  const applyTagFilter = useCallback((tag) => {
+    setTagInput(tag)
+    setTagQuery(tag)
+    setSelectedTag(tag)
     setTagDropdownOpen(false)
     setCurrentPage(1)
-  }
+  }, [])
+
+  const clearTagFilter = useCallback(() => applyTagFilter(''), [applyTagFilter])
 
   // タグ入力中の文字列を含む既存タグを、出現件数の多い順に上位5件だけ候補として出す
-  const tagCandidates = (() => {
+  const tagCandidates = useMemo(() => {
     if (tagQuery === '') return []
     const query = tagQuery.toLowerCase()
     const counts = new Map()
@@ -348,7 +350,7 @@ function App() {
       }
     }
     return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([tag]) => tag)
-  })()
+  }, [reviews, tagQuery])
 
   // 「検索」ボタン（または統合検索欄でのEnter）を押した時にのみ、下書きの内容を
   // まとめて適用済みstateへ反映する。これにより、複数条件を組み立てている最中は
@@ -371,13 +373,7 @@ function App() {
     setCurrentPage(1)
   }, [])
 
-  const filterByTag = useCallback((tag) => {
-    setTagInput(tag)
-    setTagQuery(tag)
-    setSelectedTag(tag)
-    setTagDropdownOpen(false)
-    setCurrentPage(1)
-  }, [])
+  const filterByTag = applyTagFilter
 
   const handleSearchInputKeyDown = (e) => {
     if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
@@ -405,7 +401,7 @@ function App() {
     setCurrentPage(1)
   }
 
-  const filteredReviews = reviews.filter((item) => {
+  const filteredReviews = useMemo(() => reviews.filter((item) => {
     const matchesGenre = selectedGenres.length === 0 || selectedGenres.includes(item.genre)
     const searchTarget = `${item.title}${item.impression}`.toLowerCase()
     const matchesText = searchText === '' || searchTarget.includes(searchText.toLowerCase())
@@ -413,7 +409,7 @@ function App() {
     const matchesDateFrom = dateFrom === '' || item.review_date >= dateFrom
     const matchesDateTo = dateTo === '' || item.review_date <= dateTo
     return matchesGenre && matchesText && matchesTag && matchesDateFrom && matchesDateTo
-  })
+  }), [reviews, selectedGenres, searchText, selectedTag, dateFrom, dateTo])
 
   const totalPages = Math.max(1, Math.ceil(filteredReviews.length / PAGE_SIZE))
   const currentPageSafe = Math.min(currentPage, totalPages)
@@ -421,8 +417,8 @@ function App() {
     (currentPageSafe - 1) * PAGE_SIZE,
     currentPageSafe * PAGE_SIZE
   )
-  const goToPrevPage = () => setCurrentPage((p) => Math.max(1, p - 1))
-  const goToNextPage = () => setCurrentPage((p) => Math.min(totalPages, p + 1))
+  const goToPrevPage = useCallback(() => setCurrentPage((p) => Math.max(1, p - 1)), [])
+  const goToNextPage = useCallback(() => setCurrentPage((p) => Math.min(totalPages, p + 1)), [totalPages])
 
   const API_URL = import.meta.env.VITE_API_URL
 

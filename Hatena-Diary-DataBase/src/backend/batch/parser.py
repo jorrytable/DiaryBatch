@@ -45,6 +45,16 @@ def tokenize_impression(text: str):
     return segments
 
 
+def _new_item(date_str: any, **fields) -> dict:
+    return {
+        'id': str(uuid.uuid4()),
+        'data_type': 'review',
+        'review_date': date_str,
+        'impression': "",
+        **fields,
+    }
+
+
 def flatten_impression_segments(segments) -> str:
     # 検索対象の平文impressionを再構成する。テキストはそのまま、リンクはtitle（未確定ならurl）、
     # 埋め込みは意味のある平文が無いため何も出力しない。
@@ -138,18 +148,15 @@ def parse_html_content(content_text: str,
 
                     genre, tags = classify_genre_and_tags(links[0]['url'])
 
-                    current_items.append({
-                        'id': str(uuid.uuid4()),
-                        'data_type': 'review',
-                        'review_date': date_str,
-                        'title': None,
-                        'url': "",
-                        'genre': genre,
-                        'tags': tags,
-                        'impression': "",
-                        'subtitle': "",
-                        'links': links
-                    })
+                    current_items.append(_new_item(
+                        date_str,
+                        title=None,
+                        url="",
+                        genre=genre,
+                        tags=tags,
+                        subtitle="",
+                        links=links,
+                    ))
                 elif url_matches or content_rule:
                     if url_matches:
                         url = url_matches[0].group(1)
@@ -172,17 +179,14 @@ def parse_html_content(content_text: str,
                     # ジャンル・タグは問わない（テレビ局サイトに限らずAmazon Prime Video等でも同じ記法が使われるため）
                     subtitle = _extract_subtitle(line_no_embed[url_matches[0].end():]) if url_matches else ""
 
-                    current_items.append({
-                        'id': str(uuid.uuid4()),
-                        'data_type': 'review',
-                        'review_date': date_str,
-                        'title': title,
-                        'url': url,
-                        'genre': genre,
-                        'tags': tags,
-                        'impression': "",
-                        'subtitle': subtitle
-                    })
+                    current_items.append(_new_item(
+                        date_str,
+                        title=title,
+                        url=url,
+                        genre=genre,
+                        tags=tags,
+                        subtitle=subtitle,
+                    ))
                 # どちらにも該当しない場合、current_itemsは空のまま（このアイテムは不採用）
 
             # 4. 感想（行頭が「-- 」で始まる行）
