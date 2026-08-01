@@ -2,6 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 
 const GENRES = ['映像', '音楽', 'ゲーム', 'テキスト', '体験', 'ラジオ', 'その他']
 
+// ジャンルごとのバッジ配色。未知のジャンルは「その他」と同じ配色にフォールバックする
+const GENRE_BADGE_COLORS = {
+  '映像': 'bg-blue-100 text-blue-700',
+  '音楽': 'bg-pink-100 text-pink-700',
+  'ゲーム': 'bg-green-100 text-green-700',
+  'テキスト': 'bg-yellow-100 text-yellow-700',
+  '体験': 'bg-orange-100 text-orange-700',
+  'ラジオ': 'bg-cyan-100 text-cyan-700',
+  'その他': 'bg-gray-100 text-gray-600',
+}
+
+function genreBadgeClassName(genre) {
+  return GENRE_BADGE_COLORS[genre] || GENRE_BADGE_COLORS['その他']
+}
+
 // 検索APIはLambdaの応答サイズ上限(6MB)対策として、gzip圧縮したJSONをBase64文字列で返す。
 // （API GatewayのBinaryMediaTypesはCORSプリフライトを壊すため使わず、ここで手動展開する）
 async function decodeGzipBase64Json(base64Text) {
@@ -363,7 +378,7 @@ function App() {
               <div className="flex justify-between items-start mb-2">
                 <span className="text-sm text-blue-600 font-mono">{item.review_date}</span>
                 <div className="flex flex-wrap gap-1 justify-end">
-                  <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">{item.genre}</span>
+                  <span className={`${genreBadgeClassName(item.genre)} text-xs px-2 py-1 rounded`}>{item.genre}</span>
                   {item.tags?.map((tag) => (
                     <span key={tag} className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded">{tag}</span>
                   ))}
