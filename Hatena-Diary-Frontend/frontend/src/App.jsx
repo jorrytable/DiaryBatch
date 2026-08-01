@@ -170,6 +170,14 @@ function App() {
   const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
 
+  // タグ専用検索欄の状態。tagInputは表示値（IME変換中含む）、tagQueryは候補計算に使う確定値、
+  // selectedTagは実際に一覧を絞り込むタグ（候補をクリックした時だけセットされる）。
+  const [tagInput, setTagInput] = useState('')
+  const [tagQuery, setTagQuery] = useState('')
+  const [selectedTag, setSelectedTag] = useState('')
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+  const isTagComposingRef = useRef(false)
+
   const toggleGenre = (genre) => {
     setSelectedGenres((prev) =>
       prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
@@ -177,7 +185,55 @@ function App() {
     setCurrentPage(1)
   }
 
-  const hasActiveFilters = searchInput !== '' || selectedGenres.length > 0 || dateFrom !== '' || dateTo !== ''
+  const handleTagInputChange = (e) => {
+    const value = e.target.value
+    setTagInput(value)
+    if (selectedTag !== '') setSelectedTag('')
+    if (!isTagComposingRef.current) {
+      setTagQuery(value)
+      setTagDropdownOpen(value !== '')
+    }
+  }
+
+  const handleTagCompositionEnd = (e) => {
+    isTagComposingRef.current = false
+    const value = e.target.value
+    setTagQuery(value)
+    setTagDropdownOpen(value !== '')
+  }
+
+  const selectTagCandidate = (tag) => {
+    setTagInput(tag)
+    setTagQuery(tag)
+    setSelectedTag(tag)
+    setTagDropdownOpen(false)
+    setCurrentPage(1)
+  }
+
+  const clearTagFilter = () => {
+    setTagInput('')
+    setTagQuery('')
+    setSelectedTag('')
+    setTagDropdownOpen(false)
+    setCurrentPage(1)
+  }
+
+  // タグ入力中の文字列を含む既存タグを、出現件数の多い順に上位5件だけ候補として出す
+  const tagCandidates = (() => {
+    if (tagQuery === '') return []
+    const query = tagQuery.toLowerCase()
+    const counts = new Map()
+    for (const item of reviews) {
+      for (const tag of item.tags || []) {
+        if (tag.toLowerCase().includes(query)) {
+          counts.set(tag, (counts.get(tag) || 0) + 1)
+        }
+      }
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([tag]) => tag)
+  })()
+
+  const hasActiveFilters = searchInput !== '' || selectedGenres.length > 0 || dateFrom !== '' || dateTo !== '' || selectedTag !== ''
 
   const clearAllFilters = () => {
     setSearchInput('')
@@ -185,16 +241,21 @@ function App() {
     setSelectedGenres([])
     setDateFrom('')
     setDateTo('')
+    setTagInput('')
+    setTagQuery('')
+    setSelectedTag('')
+    setTagDropdownOpen(false)
     setCurrentPage(1)
   }
 
   const filteredReviews = reviews.filter((item) => {
     const matchesGenre = selectedGenres.length === 0 || selectedGenres.includes(item.genre)
-    const searchTarget = `${item.title}${item.impression}${(item.tags || []).join(' ')}`.toLowerCase()
+    const searchTarget = `${item.title}${item.impression}`.toLowerCase()
     const matchesText = searchText === '' || searchTarget.includes(searchText.toLowerCase())
+    const matchesTag = selectedTag === '' || (item.tags || []).includes(selectedTag)
     const matchesDateFrom = dateFrom === '' || item.review_date >= dateFrom
     const matchesDateTo = dateTo === '' || item.review_date <= dateTo
-    return matchesGenre && matchesText && matchesDateFrom && matchesDateTo
+    return matchesGenre && matchesText && matchesTag && matchesDateFrom && matchesDateTo
   })
 
   const totalPages = Math.max(1, Math.ceil(filteredReviews.length / PAGE_SIZE))
@@ -265,42 +326,89 @@ function App() {
           </h1>
 
           <div className="bg-white rounded-lg shadow-md p-4 space-y-3">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value)
-                  if (!isComposingRef.current) {
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value)
+                    if (!isComposingRef.current) {
+                      setSearchText(e.target.value)
+                      setCurrentPage(1)
+                    }
+                  }}
+                  onCompositionStart={() => {
+                    isComposingRef.current = true
+                  }}
+                  onCompositionEnd={(e) => {
+                    isComposingRef.current = false
                     setSearchText(e.target.value)
                     setCurrentPage(1)
-                  }
-                }}
-                onCompositionStart={() => {
-                  isComposingRef.current = true
-                }}
-                onCompositionEnd={(e) => {
-                  isComposingRef.current = false
-                  setSearchText(e.target.value)
-                  setCurrentPage(1)
-                }}
-                placeholder="タイトル・感想・タグで検索"
-                className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {searchInput !== '' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchInput('')
-                    setSearchText('')
-                    setCurrentPage(1)
                   }}
-                  aria-label="検索内容をクリア"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
-              )}
+                  placeholder="タイトル・感想で検索"
+                  className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {searchInput !== '' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchInput('')
+                      setSearchText('')
+                      setCurrentPage(1)
+                    }}
+                    aria-label="検索内容をクリア"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="relative w-48">
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={handleTagInputChange}
+                  onCompositionStart={() => {
+                    isTagComposingRef.current = true
+                  }}
+                  onCompositionEnd={handleTagCompositionEnd}
+                  onFocus={() => {
+                    if (tagQuery !== '') setTagDropdownOpen(true)
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setTagDropdownOpen(false), 150)
+                  }}
+                  placeholder="タグで検索"
+                  className="border border-gray-300 p-2 pr-8 w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {(tagInput !== '' || selectedTag !== '') && (
+                  <button
+                    type="button"
+                    onClick={clearTagFilter}
+                    aria-label="タグ検索をクリア"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                )}
+                {tagDropdownOpen && tagCandidates.length > 0 && (
+                  <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded shadow-md text-sm overflow-hidden">
+                    {tagCandidates.map((tag) => (
+                      <li key={tag}>
+                        <button
+                          type="button"
+                          onClick={() => selectTagCandidate(tag)}
+                          className="w-full text-left px-3 py-1.5 hover:bg-gray-100"
+                        >
+                          {tag}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
