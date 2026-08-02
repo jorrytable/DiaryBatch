@@ -47,6 +47,8 @@ Resources:
       CodeUri: src/backend/
       Handler: api.authorizer.lambda_handler
       Runtime: python3.11
+      # デフォルト(128MB)はCPU割当が少なくコールドスタートが遅いため引き上げ
+      MemorySize: 512
       Environment:
         Variables:
           SSM_PARAM_NAME: "/hatena-site/access-token"
@@ -148,6 +150,8 @@ Resources:
       Runtime: python3.11
       # 全件取得のためQueryを複数回ページングする可能性があるため、既定の3秒から延長
       Timeout: 30
+      # デフォルト(128MB)はCPU割当が少なくjson.dumps/gzip.compressが遅いため引き上げ
+      MemorySize: 512
       Environment:
         Variables:
           REVIEW_TABLE_NAME: !Ref ReviewTable
