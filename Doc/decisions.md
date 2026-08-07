@@ -169,7 +169,7 @@ GSIのKeySchema変更は不可、同一デプロイでのGSI追加+削除も不�
 `Auth.DefaultAuthorizer`設定時は`AddDefaultAuthorizerToCorsPreflight: false`を必ず入れる（デフォルトtrueだとOPTIONSにもAuthorizerが適用され401になる）。
 
 ### 4.4 Git Bash（MSYS）はAWS CLIの先頭スラッシュ引数を誤変換する
-`/aws/lambda/...`のような先頭`/`の引数は、コマンド前に`MSYS_NO_PATHCONV=1`を付ける。
+`/aws/lambda/...`のような先頭`/`の引数は、コマンド前に`MSYS_NO_PATHCONV=1`を付ける。**注意**：引数全体が`/`始まりの場合だけでなく、`--environment "Variables={SSM_PARAM_NAME=/hatena-site/access-token}"`のように**引数の中に埋め込まれた`/`始まりの値**でも同様に誤変換される（2026-08-07、合言葉変更作業中に`SSM_PARAM_NAME`の値が`/C`のような意味不明な文字列に壊れる事故が発生。`MSYS_NO_PATHCONV=1`を付けて再実行し復旧）。AWS CLIコマンドの引数に`/`始まりの文字列が一箇所でも含まれる場合は、常に`MSYS_NO_PATHCONV=1`を付ける習慣にする。
 
 ### 4.5 `aws lambda invoke`はCLI側の応答待ちタイムアウトで先に諦めることがある
 Lambda自体は正常でも、botocore側のHTTP読み取りタイムアウト（デフォルト約60秒）で先にエラーになる。長時間実行が想定される場合は`--cli-read-timeout 910`等を指定し、CloudWatch Logsで実際の結果を確認する。
@@ -184,10 +184,12 @@ Vercelは各デプロイに固有URL（`https://diary-batch-<ランダム文字�
 `music.youtube.com`は非ブラウザ環境からのアクセスに対し実データではなく固定の代替ページを返す。動画の実際のカテゴリ判定にはYouTube Data API v3の`videos.list`（`snippet.categoryId`）を使う。
 
 ### 4.9 合言葉（SSMパラメータ）の変更方法
-`authorizer.py`はSSMパラメータ`/hatena-site/access-token`を毎回リクエスト時に取得するため、値を更新するだけでデプロイ不要・即時反映される。
+**2026-08-02更新**: 課題#12対応で`authorizer.py`がSSMパラメータをLambdaのウォームコンテナ内にモジュールスコープでキャッシュするようになったため（[[hatena_diary_app_decisions]]参照）、**値を更新するだけでは既存のウォームコンテナには即時反映されない**（コールドスタートまで古い値が使われ続ける）。値の更新に加えて、`AuthorizerFunction`を強制的に新しい実行環境に切り替える必要がある。
 ```
 MSYS_NO_PATHCONV=1 aws ssm put-parameter --name "/hatena-site/access-token" --value "新しい値" --type SecureString --overwrite
+MSYS_NO_PATHCONV=1 aws lambda update-function-configuration --function-name <AuthorizerFunctionの物理名> --environment "Variables={SSM_PARAM_NAME=/hatena-site/access-token}"
 ```
+2つ目のコマンドの`--environment`の値は必ず現状のまま（変更しない）で実行すること。目的は値の変更ではなく、更新をトリガーに全ウォームコンテナを入れ替えさせること。実行後は`aws lambda invoke`で`authorizationToken`に新しい合言葉を渡し、`Effect: "Allow"`が返ることを確認する（2026-08-07、合言葉変更時に本手順で実施・確認済み。実際の合言葉の値は本ファイルには記載しない）。
 
 ### 4.10 API GatewayのBinaryMediaTypesはCORSプリフライトを壊すことがある
 このAPIでは`BinaryMediaTypes`を設定すると原因不明のままCORSプリフライト（OPTIONSのMock統合）が壊れた（3.1参照）。同様の対応をする場合はAPI Gateway側のバイナリパススルーに頼らず、フロント側で手動base64デコード＋展開する方式を最初から採用すること。
@@ -223,7 +225,7 @@ MSYS_NO_PATHCONV=1 aws ssm put-parameter --name "/hatena-site/access-token" --va
 | 9 | B | フロントエンド | スマートフォン対応 | スマートフォン表示時に検索フィールド一式の高さを低くする。 |
 | 10 | B | バックエンド | 分類ロジックの見直し | 「テキスト」「ラジオ」ジャンルへの対応ドメイン追加。`classify.py`の`DOMAIN_RULES`にエントリを増やす想定（#5とは異なり、既存の仕組みのままエントリを増やすだけで対応可能）。 |
 | 11 | B | バックエンド | レビュー本文（自由記述部分）のパース範囲拡張（脚注内容・深い階層の箇条書き） | 統合元2件は根本原因が共通：`parser.py`の本文パースが「- 」（作品名）「-- 」（感想）の2階層＋脚注記号`((...))`の除去、という現状のモデルしかカバーしておらず、実際の日記本文にはそれ以上の階層や脚注中身が含まれることがある。①注（脚注）の中身自体を取り込むか、②「--- 」等さらに深い階層の記法をどう解釈するか、いずれも本文パースモデル自体の要ヒアリング・再設計を要する。 |
-| 12 | B | バックエンド | 初回読み込み時間の短縮 | **2026-08-02対応・デプロイ済み**。現存エントリ数1309件、体感は「ログインボタン押下後、何も表示されない時間が長い」。実測（`aws lambda invoke`で直接計測）: `SearchFunction`は元のデフォルト128MB相当では`json.dumps`/`gzip.compress`がCPU律速（GILでシングルスレッド）となりDuration約2.9秒。`MemorySize`を1769MB（Lambdaが1vCPUをフル割当する境界値。1vCPU超はシングルスレッド処理には効かないため上限として採用）に引き上げたところDuration約0.9秒に短縮（約3.2倍）。`AuthorizerFunction`は512MBのままで十分（コールドスタート約630ms、ウォーム時は既存のSSMキャッシュ化により約1msとほぼ即時のため据え置き）。課金は「メモリ×実行時間」のため、duration短縮でほぼ相殺され実質増にならない。`template.yaml`変更→`sam build`→`sam deploy`まで実施済み、本番反映済み。残る体感時間（ネットワーク転送・フロント側のgzip展開等）が気になる場合は、ペイロードサイズ削減（課題#1と関連）を次の一手として検討する。 |
+| ~~12~~ | B | バックエンド | ~~初回読み込み時間の短縮~~ → **2026-08-07クローズ（ユーザー確認：体感改善済み）** | 実測（`aws lambda invoke`で直接計測、現存エントリ数1309件）: `SearchFunction`のDuration約2.9秒→`MemorySize`を1769MB（Lambdaが1vCPUをフル割当する境界値）に引き上げて約0.9秒（約3.2倍高速化）。`json.dumps`/`gzip.compress`がCPU律速（GIL）だったことが原因。`AuthorizerFunction`は512MBのまま据え置き（既存のSSMキャッシュ化で warm時約1ms）。デプロイ後、ユーザーより「軽くなりました」と体感改善の報告あり、クローズ。**保留した二次対応**（必要になれば再起票）：①ペイロードサイズ削減（embed_html等を初回ロードから外す・ページング化。課題#1のlinks統合と関連）②Provisioned Concurrency導入（個人利用の低頻度アクセスでは費用対効果が悪く見送り推奨）③フロントの`decodeGzipBase64Json`のストリーミング化（体感寄与度が低いと判断）。 |
 | 13 | B | フロントエンド | 各操作ボタン押下時にスクロール位置を最上部に戻す | 検索ボタン・条件をすべてクリアボタン・ページ送り（次へ/前へ）ボタンを押しても、一覧の途中にスクロールしたままになる。`App.jsx`の該当ハンドラ（`executeSearch`/`clearAllFilters`/`goToPrevPage`/`goToNextPage`）に`window.scrollTo`等の追加が必要と想定。 |
 
 ### 6.2 対応不要と判断してクローズした項目
