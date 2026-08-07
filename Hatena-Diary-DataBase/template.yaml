@@ -135,11 +135,15 @@ Resources:
                 - ssm:GetParameter
               Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/hatena-batch/youtube-api-key"
       Events:
-        # 毎日 JST 3:00（UTC 18:00）に自動実行
+        # 毎日 JST 5:30（UTC 20:30）に自動実行。
+        # 日記は予約投稿でJST 5:00に発火するため、旧設定(JST 3:00)だと直前の
+        # 予約投稿がまだ発火前でフィードに現れず、取り込みが1日分遅れる原因になっていた
+        # （2026-08-07、日付ラベルの調査で判明）。5:00の発火後に余裕を持って実行されるよう
+        # 30分後ろにずらす。
         DailySchedule:
           Type: Schedule
           Properties:
-            Schedule: "cron(0 18 * * ? *)"
+            Schedule: "cron(30 20 * * ? *)"
 
   # データを検索・取得するAPI用プログラム
   SearchFunction:
